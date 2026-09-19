@@ -1,0 +1,87 @@
+/**
+ * @file chassis_task.cpp
+ * @author 大帅将军
+ * @brief 底盘任务实现
+ * @version 0.1
+ * @date 2026-04-21
+ *
+ * @copyright Copyright (c) 2026
+ *
+ * @attention :
+ * @note :
+ * @versioninfo :
+ */
+
+#include "chassis_task.h"
+#include "Motor.hpp"
+#include "chassis_solution.hpp"
+#include "com_config.h"
+#include "pid_controller.h"
+#include "topic_pool.h"
+#include "topics.hpp"
+#include <array>
+
+// 任务句柄
+osThreadId_t ChassisTaskHandle;
+
+// 底盘电机实例声明
+extern C620Motor chassis_motor1, chassis_motor2, chassis_motor3, chassis_motor4;
+
+// 底盘控制命令订阅
+static TypedTopicSubscriber<pub_chassis_cmd> chassis_cmd_sub("chassis_cmd", 8);
+pub_chassis_cmd chassis_chassis_cmd{};
+
+//将实例移出命名空间以在debug处访问
+OmniChassis Omnichassis_solver(chassis_motor1, chassis_motor2, chassis_motor3,
+                chassis_motor4);
+namespace {//omni底盘解算器实例
+// OmniChassis Omnichassis_solver(chassis_motor1, chassis_motor2, chassis_motor3,
+//                 chassis_motor4);
+// 每个轮子的PID参数配置
+const std::array<OmniChassis::SpeedPidParam, OmniChassis::kWheelCount>
+    kOmniWheelSpeedPidParams = {
+        // OmniChassis::SpeedPidParam(105.0f, 75000.0f, 0.002f, 16000.0f, 0.5f, NONE), // 左上
+        // OmniChassis::SpeedPidParam(105.0f, 75000.0f, 0.002f, 16000.0f, 0.5f, NONE), // 右上
+        // OmniChassis::SpeedPidParam(105.0f, 75000.0f, 0.002f, 16000.0f, 0.5f, NONE), // 左下
+        // OmniChassis::SpeedPidParam(105.0f, 75000.0f, 0.002f, 16000.0f, 0.5f, NONE), // 右下
+        // OmniChassis::SpeedPidParam(1200.0f, 750.0f, 0.0f, 16000.0f, 0.5f, NONE), // 左上
+        // OmniChassis::SpeedPidParam(1200.0f, 750.0f, 0.0f, 16000.0f, 0.5f, NONE), // 右上
+        // OmniChassis::SpeedPidParam(1200.0f, 750.0f, 0.0f, 16000.0f, 0.5f, NONE), // 左下
+        // OmniChassis::SpeedPidParam(1200.0f, 750.0f, 0.0f, 16000.0f, 0.5f, NONE), // 右下
+        OmniChassis::SpeedPidParam(4000.0f, 8600.0f, 0.0f, 16000.0f, 0.0f, IMCREATEMENT_OF_OUT), // 左上
+        OmniChassis::SpeedPidParam(4000.0f, 8600.0f, 0.0f, 16000.0f, 0.0f, IMCREATEMENT_OF_OUT), // 右上
+        OmniChassis::SpeedPidParam(4000.0f, 8600.0f, 0.0f, 16000.0f, 0.0f, IMCREATEMENT_OF_OUT), // 左下
+        OmniChassis::SpeedPidParam(4000.0f, 8600.0f, 0.0f, 16000.0f, 0.0f, IMCREATEMENT_OF_OUT), // 右下
+    };
+
+const std::array<OmniChassis::SpeedPidParam, OmniChassis::kWheelCount>
+    kOmniWheelAnglePidParams = {
+        OmniChassis::SpeedPidParam(1200.0f, 750.0f, 0.0f, 16000.0f, 0.5f, NONE), // 左上
+        OmniChassis::SpeedPidParam(1200.0f, 750.0f, 0.0f, 16000.0f, 0.5f, NONE), // 右上
+        OmniChassis::SpeedPidParam(1200.0f, 750.0f, 0.0f, 16000.0f, 0.5f, NONE), // 左下
+        OmniChassis::SpeedPidParam(1200.0f, 750.0f, 0.0f, 16000.0f, 0.5f, NONE), // 右下
+    };
+}
+
+static inline void chassisInit() {
+    Omnichassis_solver.configureSpeedPid(kOmniWheelSpeedPidParams);
+    Omnichassis_solver.configureAnglePid(kOmniWheelAnglePidParams);
+    if (!chassis_cmd_sub.IsValid()) {
+        return;
+    }
+}
+
+void chassisTask(void *argument) {
+    TickType_t currentTime = xTaskGetTickCount();
+
+    chassisInit();
+
+    for (;;) {
+
+        if (chassis_cmd_sub.TryGet(&chassis_chassis_cmd)) {
+        }
+        // 无论有没有新命令，都持续执行解算
+        Omnichassis_solver.run(chassis_chassis_cmd);
+        vTaskDelayUntil(&currentTime, 1);
+    }
+}
