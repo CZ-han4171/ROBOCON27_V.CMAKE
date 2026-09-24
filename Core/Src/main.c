@@ -94,7 +94,7 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+  MX_USB_DEVICE_Init();
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -104,7 +104,6 @@ int main(void)
   MX_FDCAN2_Init();
   MX_FDCAN3_Init();
   MX_USART3_UART_Init();
-  MX_USB_DEVICE_Init();
   MX_USART2_UART_Init();
   MX_UART5_Init();
   MX_USART10_UART_Init();

@@ -1,16 +1,14 @@
 /**
  * @file control_task.cpp
  * @author 大帅将军 / lxlx
- * @brief 控制任务 —— Xbox按键 → 底盘 + 上身控制指令决策层
+ * @brief
  * @version 0.3
  * @date 2026-05-28
  *
  * @copyright Copyright (c) 2026
  *
- * @attention btnSelect 切换模式：0=队友模式(现有逻辑), 1=调试模式(上身按键映射)
- * @note 持续型按键每帧累加步进量；切换型按键仅上升沿触发
- * @versioninfo v0.3: 模块化拆分 —— 流程函数移至 control_process，动作函数移至 control_action
- * @versioninfo v0.2: 新增上身控制指令 + btnSelect模式切换
+ * @attention
+ * @note 
  */
 
 #include "main.h"
@@ -25,6 +23,7 @@
 #include <cmath>
 #include <cstdint>
 #include "control_Traject.hpp"
+#include "Motor.hpp"
 
 osThreadId_t ControlTaskHandle;
 
@@ -43,14 +42,11 @@ TypedTopicSubscriber<pub_Position_Data> control_position_sub("position", 8);
 pub_Position_Data control_position_msg{};
 pub_Position_Data control_position{};
 
-// TypedTopicSubscriber<pub_ir_data> control_ir_sub("ir_data", 8);
-// pub_ir_data control_ir_msg{};
-
-// TypedTopicSubscriber<QR_code_data_t> qr_code_data_sub("qr_code_data", 8);
-// QR_code_data_t control_qr_code_data{};
-
 pub_chassis_cmd robot_v_aim_cmd{};
 pub_chassis_cmd state_now_cmd{};
+
+extern VESCMotor U8_3;
+int32_t U8_3_erpm = 0;
 
 void controlInit() {
     if (!chassis_data_pub.IsValid()) {
@@ -115,6 +111,8 @@ void controlTask(void *argument) {
             robot_v_aim_cmd.linear_y_ = v_aim * sin((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
             robot_v_aim_cmd.omega_ = rm_cmd.omega_;    
         }
+
+        U8_3.setMotorCtrl(U8_3_erpm, VESCMotor::VESC_MODE::SET_ERPM);
 
         chassis_data_pub.Publish(robot_v_aim_cmd);
 

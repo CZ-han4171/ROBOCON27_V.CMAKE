@@ -81,6 +81,11 @@ C620Motor chassis_motor2(&fdcan3_bus, 0x202, 0, 0x200, 0);
 C620Motor chassis_motor3(&fdcan3_bus, 0x203, 0, 0x200, 0);
 C620Motor chassis_motor4(&fdcan3_bus, 0x204, 0, 0x200, 0);
 
+VESCMotor U8_1(&fdcan1_bus, 0x965, true, 101, true);
+VESCMotor U8_2(&fdcan1_bus, 0x966, true, 102, true);
+VESCMotor U8_3(&fdcan1_bus, 0x967, true, 103, true);
+VESCMotor U8_4(&fdcan1_bus, 0x968, true, 104, true);
+
 //上层电机
 C610Motor arm2006_motor(&fdcan2_bus, 0x205, 0, 0x1FF, 0);
 C620Motor arm3508_motor(&fdcan2_bus, 0x206, 0, 0x1FF, 0);
@@ -173,13 +178,13 @@ ROSProtocol ros_protocol(nullptr, &UsbPort::Instance());
 uint8_t comServiceInit() {
   // can外设初始化
   canFilterInit(&hfdcan1, FDCAN_STANDARD_ID, FDCAN_FILTER_TO_RXFIFO0, 0, 0);
-  canFilterInit(&hfdcan1, FDCAN_STANDARD_ID, FDCAN_FILTER_TO_RXFIFO1, 0, 0);
+  canFilterInit(&hfdcan1, FDCAN_EXTENDED_ID, FDCAN_FILTER_TO_RXFIFO1, 0, 0);
   bspCanInit(&hfdcan1);
   canFilterInit(&hfdcan2, FDCAN_STANDARD_ID, FDCAN_FILTER_TO_RXFIFO0, 0, 0);
-  canFilterInit(&hfdcan2, FDCAN_STANDARD_ID, FDCAN_FILTER_TO_RXFIFO1, 0, 0);
+  canFilterInit(&hfdcan2, FDCAN_EXTENDED_ID, FDCAN_FILTER_TO_RXFIFO1, 0, 0);
   bspCanInit(&hfdcan2);
   canFilterInit(&hfdcan3, FDCAN_STANDARD_ID, FDCAN_FILTER_TO_RXFIFO0, 0, 0);
-  canFilterInit(&hfdcan3, FDCAN_STANDARD_ID, FDCAN_FILTER_TO_RXFIFO1, 0, 0);
+  canFilterInit(&hfdcan3, FDCAN_EXTENDED_ID, FDCAN_FILTER_TO_RXFIFO1, 0, 0);
   bspCanInit(&hfdcan3);
 
   // can 总线初始化
@@ -191,6 +196,11 @@ uint8_t comServiceInit() {
   chassis_motor2.init();
   chassis_motor3.init();
   chassis_motor4.init();
+
+  U8_1.init(1.0f, 21);
+  U8_2.init(1.0f, 21);
+  U8_3.init(1.0f, 21);
+  U8_4.init(1.0f, 21);
 
   arm2006_motor.init();
   arm3508_motor.init();
@@ -207,6 +217,10 @@ uint8_t comServiceInit() {
   fdcan2_bus.registerDevice(&arm3508_motor);
   fdcan2_bus.registerDevice(&arm4310_motor);
 
+  fdcan1_bus.registerDevice(&U8_1);
+  fdcan1_bus.registerDevice(&U8_2);
+  fdcan1_bus.registerDevice(&U8_3);
+  fdcan1_bus.registerDevice(&U8_4);
   
   // 串口外设
   uart2_rx_semphore = osSemaphoreNew(1, 0, NULL);
@@ -282,6 +296,11 @@ void can1SendTask(void *argument) {
 
   for (;;) {
 
+    fdcan1_bus.addCanMsg(U8_1.VESCMotorCanTrans());
+    fdcan1_bus.addCanMsg(U8_2.VESCMotorCanTrans());
+    fdcan1_bus.addCanMsg(U8_3.VESCMotorCanTrans());
+    fdcan1_bus.addCanMsg(U8_4.VESCMotorCanTrans());
+
     vTaskDelayUntil(&currentTime, 1); // 每1ms执行一次发送任务
   }
 }
@@ -298,7 +317,7 @@ void can2SendTask(void *argument) {
     pack.id = 0x1FF; // DJI Group 2
     // 当前仅有 0x201(arm2006) 和 0x203(arm3508)，其余槽位置 0
     int16_t commands[4] = {0};
-
+ 
     // arm motor
     commands[0] = static_cast<int16_t>(arm2006_motor.cmdTrans()); // 0x201
     commands[1] = static_cast<int16_t>(arm3508_motor.cmdTrans()); // 0x203

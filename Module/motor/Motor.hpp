@@ -22,6 +22,7 @@
 #include "Canbus.hpp"
 #include "main.h"
 #include <cmath>
+#include <cstdint>
 #include <stdint.h>
 
 #define RAD_2_DEGREE 57.2957795f       // 180/pi  弧度转换成角度
@@ -30,8 +31,6 @@
 #define RPM_2_RAD_PER_SEC 0.104719755f // ×2pi/60sec,转每分钟 转化 弧度每秒
 
 constexpr uint32_t MOTOR_RX_TIMEOUT_MS = 10; // 电机状态超时阈值，单位毫秒
-
-class C610Motor;
 
 class MotorBase {
 public:
@@ -772,4 +771,107 @@ private:
   MotorModeCmd motor_mode_cmd_{ModeNone};
   uint32_t tx_base_id_{0};
   uint32_t last_rx_timestamp_{0};
+};
+
+class VESCMotor : public CanDevice, public MotorBase {
+public:
+
+  // VESC 控制模式
+  enum VESC_MODE : uint8_t {
+      SET_DUTY = 0,                         // 占空比模式，不推荐使用
+      SET_CURRENT = 1,                      // 电流闭环模式，直接下发电流
+      SET_CURRENT_BRAKE = 2,                // 刹车模式
+      SET_ERPM = 3,                         // 电气转速闭环模式，命令直接交给 VESC 内部闭环
+      SET_POS = 4,                          // 位置模式，不推荐使用
+      SET_POS_SPD_LIM = 5,                  // 位置模式 + 速度限制
+      SET_CURRENT_REL = 6,                  // 相对电流控制
+      SET_CURRENT_BRAKE_REL = 7,            // 相对制动电流控制
+      SET_CURRENT_HANDBRAKE = 8,            // 手刹/驻车电流控制
+      SET_CURRENT_HANDBRAKE_REL = 9         // 相对手刹电流控制
+  } ;
+  
+  enum VESC_RPM_CONTROL_MODE : uint8_t {
+      VESC_RPM_CONTROL_NATIVE_ERPM = 0, // setTargetRPM 走 VESC 原生 eRPM 闭环
+      VESC_RPM_CONTROL_PID_CURRENT = 1  // setTargetRPM 走本地 PID 速度环 + CURRENT 下发
+  } ;
+
+  typedef struct{
+    float_t cmd = 0;
+    uint8_t mode = 1;
+  } VESC_ControlCmd;
+
+  VESCMotor(CanBus *manager, uint32_t id, bool is_extid, uint32_t tx_id,
+              bool tx_is_extid)
+      : CanDevice(manager, id, is_extid, tx_id, tx_is_extid) {}
+  
+  void init(float reduction_ratio, uint16_t MotorPoles) {
+    setMotorReduction(reduction_ratio);
+    setMotorPoles(MotorPoles);
+  }
+
+    void onRx(const uint8_t data[8], uint8_t len) override {
+    if (len < 8)return;
+
+    // 根据VESC标准协议解析 CAN_PACKET_STATUS_1
+    // Bytes 0-3: eRPM (int32_t)
+    // Bytes 4-5: 电流 (int16_t, 实际电流 * 10)
+    // Bytes 6-7: 占空比 (int16_t, 实际占空比 * 1000)
+    eRPM_ = static_cast<int32_t>((data[0] << 24) |
+                                 (data[1] << 16) |
+                                 (data[2] << 8) |
+                                 data[3]);
+    int16_t current_raw = static_cast<int16_t>((data[4] << 8) | data[5]);
+    int16_t duty_raw = static_cast<int16_t>((data[6] << 8) | data[7]);
+
+    // 将解析出的数据转换为标准单位并存入成员变量
+    RPM_ = eRPM_to_RPM(eRPM_);
+    current_ = static_cast<float>(current_raw) * 100.0f; // 转换为 mA
+    duty_ = static_cast<float>(duty_raw) * 0.001f;       // 转换为 -1.0 ~ 1.0
+
+    // 更新时间戳
+    last_rx_timestamp_ = HAL_GetTick();
+  }
+
+  void setMotorPoles(const uint16_t config){ Motor_Poles_ = config; }
+
+  void setMotorCtrl(float_t cmd, uint8_t mode){
+    Motor_ControlCmd_.cmd = cmd;
+    Motor_ControlCmd_.mode = mode;
+  }
+
+  CanBus::ClassicPack VESCMotorCanTrans(){
+    CanBus::ClassicPack pack;
+    if(is_extid_){pack.type = CanBus::Type::EXTENDED;}
+    else {pack.type = CanBus::Type::STANDARD;}
+    pack.id = (modeTrans() << 8) | (tx_id_ & 0xFFU);
+
+    int32_t sendMsgs = static_cast<int32_t>(cmdTrans());
+    pack.data[0] = static_cast<int16_t>((sendMsgs >> 24) & 0xFF);
+    pack.data[1] = static_cast<int16_t>((sendMsgs >> 16) & 0xFF);
+    pack.data[2] = static_cast<int16_t>((sendMsgs >> 8) & 0xFF);
+    pack.data[3] = static_cast<int16_t>(sendMsgs & 0xFF);
+    pack.data[4] = static_cast<int16_t>(0);
+    pack.data[5] = static_cast<int16_t>(0);
+    pack.data[6] = static_cast<int16_t>(0);
+    pack.data[7] = static_cast<int16_t>(0);
+
+    return pack;
+  }
+
+  float cmdTrans() { return Motor_ControlCmd_.cmd;}
+  uint8_t modeTrans() { return Motor_ControlCmd_.mode;}
+
+  float eRPM_to_RPM(int32_t eRPM){
+      return static_cast<float>(eRPM) / Motor_Poles_;
+  }
+
+private:
+  uint16_t Motor_Poles_ = 0;
+  VESC_ControlCmd Motor_ControlCmd_ ;
+  uint32_t last_rx_timestamp_{0};
+  int32_t eRPM_ = 0;
+  float_t RPM_  = 0.0f;
+  float_t current_ = 0.0f;
+  float_t duty_ = 0.0f;
+
 };
