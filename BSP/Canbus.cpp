@@ -104,7 +104,7 @@ void bspCanInit(FDCAN_HandleTypeDef *hcan) {
   }
 
   // 使能can发送完成中断
-  if (HAL_FDCAN_TT_ActivateNotification(hcan, FDCAN_IT_TX_FIFO_EMPTY) !=
+  if (HAL_FDCAN_ActivateNotification(hcan, FDCAN_IT_TX_FIFO_EMPTY, 0) !=
       HAL_OK) {
     Error_Handler();
   }
