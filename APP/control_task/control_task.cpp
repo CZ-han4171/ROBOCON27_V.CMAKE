@@ -45,8 +45,18 @@ pub_Position_Data control_position{};
 pub_chassis_cmd robot_v_aim_cmd{};
 pub_chassis_cmd state_now_cmd{};
 
+//debug begin
 extern VESCMotor U8_3;
+extern C620Motor arm3508_motor;
+PID_t DJI3508_SpeedPid{.Kp = 800.0f,.Ki = 2000.0f,.Kd = 0.01f,.MaxOut = 16000.0f,.DeadBand = 0.0f,.Improve = IMCREATEMENT_OF_OUT};
 int32_t U8_3_erpm = 0;
+float DJI3508_w_rad_aim = 0;
+float DJI3508_current = 0;
+float DJI3508_w_rad_return = 0;
+float_t all_time = 0;
+float_t debug_dt;
+uint32_t debug_DWT_CNT;
+//debug end
 
 void controlInit() {
     if (!chassis_data_pub.IsValid()) {
@@ -80,6 +90,10 @@ void controlTask(void *argument) {
     TickType_t rcUpdateTime = currentTime;
     constexpr TickType_t kRemoteInputTimeout = pdMS_TO_TICKS(500);
 
+    control_rm_cmd.joyLHori = kJoyCenter;
+    control_rm_cmd.joyLVert = kJoyCenter;
+    control_rm_cmd.joyRHori = kJoyCenter;
+    control_rm_cmd.joyRVert = kJoyCenter;
 
     controlInit();
     // uint32_t last_time = HAL_GetTick();
@@ -112,10 +126,18 @@ void controlTask(void *argument) {
             robot_v_aim_cmd.omega_ = rm_cmd.omega_;    
         }
 
+        debug_dt = DWT_GetDeltaT(&debug_DWT_CNT);
+        all_time = all_time + debug_dt;
+
+        // DJI3508_w_rad_aim = M_PI - M_PI*cosf(all_time*3.0f);
+        DJI3508_w_rad_return = arm3508_motor.getCurrentSpeed();
+        DJI3508_current = PID_Calculate(&DJI3508_SpeedPid, DJI3508_w_rad_return , DJI3508_w_rad_aim);
+        arm3508_motor.setMotorCmd(DJI3508_current);
+
         U8_3.setMotorCtrl(U8_3_erpm, VESCMotor::VESC_MODE::SET_ERPM);
 
         chassis_data_pub.Publish(robot_v_aim_cmd);
 
-        vTaskDelayUntil(&currentTime, 5);
+        vTaskDelayUntil(&currentTime, 1);
     }
 }

@@ -17,6 +17,29 @@
 #pragma once
 
 inline constexpr float kDegToRad = M_PI / 180.0f;
+inline constexpr float kRadToDeg = 180.0f / M_PI;
+
+typedef struct {
+    float_t x;
+    float_t y;
+} Vec2_t;
+
+typedef struct {
+    float_t x;
+    float_t y;
+    float_t z;
+} Vec3_t;
+
+typedef struct {
+    float radius;   // r
+    float theta;    // θ
+}Polar_t;
+
+typedef struct {
+    float radius;   // r
+    float theta;    // θ
+    float z;        // z
+}Cylinder_t;
 
 inline float Warp_ToRange(float value,float min,float max){
     float range = max - min;
