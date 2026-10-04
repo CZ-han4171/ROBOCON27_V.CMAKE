@@ -24,13 +24,14 @@
 #include <cmath>
 #include <cstdint>
 #include <stdint.h>
+#include "bsp_dwt.h"
 
 #define RAD_2_DEGREE 57.2957795f       // 180/pi  弧度转换成角度
 #define DEGREE_2_RAD 0.01745329252f    // pi/180  角度转化成弧度
 #define RPM_2_ANGLE_PER_SEC 6.0f       // 360/60,转每分钟 转化 度每秒
 #define RPM_2_RAD_PER_SEC 0.104719755f // ×2pi/60sec,转每分钟 转化 弧度每秒
 
-constexpr uint32_t MOTOR_RX_TIMEOUT_MS = 10; // 电机状态超时阈值，单位毫秒
+constexpr float MOTOR_RX_TIMEOUT_S = 0.05f; // 电机状态超时阈值，单位毫秒
 
 class MotorBase {
 public:
@@ -58,6 +59,12 @@ public:
   float getRawCurrentSumPos(void) const { return raw_sum_pos_; }
   float getRawCurrentSpeed(void) const { return raw_speed_; }
   float getRawCurrentTorque(void) const { return raw_torque_; }
+
+  __weak bool isOffline() const { return (DWT_GetTimeline_s() - last_rx_timestamp_s > MOTOR_RX_TIMEOUT_S);}
+  uint32_t getRxTimestamp() const { return last_rx_timestamp_s; }
+
+  // 报文时间戳
+  float last_rx_timestamp_s{0};
 
   // 电机最原始output指令(速度/位置/电流)
   float cmd_;
@@ -150,7 +157,7 @@ public:
     temperature_ = static_cast<float>(data[6]);
 
     // 更新时间戳
-    last_rx_timestamp_ = HAL_GetTick();
+    last_rx_timestamp_s = DWT_GetTimeline_s();
   }
 
   // buildTx 返回自己的 int16 命令，不发送整个帧
@@ -164,13 +171,6 @@ public:
 
   float cmdTrans() { return cmd_ * (10000.f / 10000.0f); }
 
-  
-  uint32_t getRxTimestamp() const { return last_rx_timestamp_; }
-
-  bool isOffline() const { 
-    return (HAL_GetTick() - last_rx_timestamp_ > MOTOR_RX_TIMEOUT_MS);
-  }
-
 private:
   // 编码器相关
   bool is_encoder_init{false};
@@ -182,10 +182,6 @@ private:
 
   // 电流转力矩
   float current_to_torque_{0.0f}; // M3508: 0.2 Nm/A
-
-  // 报文时间戳
-  uint32_t last_rx_timestamp_{0};
-  
 };
 
 class C620Motor : public CanDevice, public MotorBase {
@@ -246,7 +242,7 @@ public:
     temperature_ = static_cast<float>(data[6]);
 
     // 更新时间戳
-    last_rx_timestamp_ = HAL_GetTick();
+    last_rx_timestamp_s = DWT_GetTimeline_s();
   }
 
   float cmdTrans() { return cmd_ * 16384.f / 20000.0f; }
@@ -257,11 +253,11 @@ public:
     return false;
   }
 
-  uint32_t getRxTimestamp() const { return last_rx_timestamp_; }
+  // uint32_t getRxTimestamp() const { return last_rx_timestamp_; }
   
-  bool isOffline() const { 
-    return (HAL_GetTick() - last_rx_timestamp_ > MOTOR_RX_TIMEOUT_MS);
-  }
+  // bool isOffline() const { 
+  //   return (HAL_GetTick() - last_rx_timestamp_ > MOTOR_RX_TIMEOUT_MS);
+  // }
 
 private:
   // 编码器相关
@@ -275,8 +271,8 @@ private:
   // 电流转力矩
   float current_to_torque_{0.0f}; // M2006: 0.2 Nm/A
 
-  // 报文时间戳
-  uint32_t last_rx_timestamp_{0};
+  // // 报文时间戳
+  // uint32_t last_rx_timestamp_{0};
 };
 
 class GM6020Motor : public CanDevice, public MotorBase {
@@ -571,13 +567,16 @@ public:
     speed_ = raw_speed_ / reduction_ratio_;
     torque_ = raw_torque_ * reduction_ratio_;
     temperature_ = 0.0f;
-    last_rx_timestamp_ = HAL_GetTick();
+    last_rx_timestamp_s = DWT_GetTimeline_s();
   }
 
-  uint32_t getRxTimestamp() const { return last_rx_timestamp_; }
-
-  bool isOffline() const {
-    return (HAL_GetTick() - last_rx_timestamp_ > MOTOR_RX_TIMEOUT_MS);
+  bool isOffline() {
+    if(DWT_GetTimeline_s() - last_rx_timestamp_s > MOTOR_RX_TIMEOUT_S){
+      dmMotorEnable();
+      return true;
+    }else {
+      return false;
+    }
   }
 
   bool buildTx(uint8_t data[8], uint8_t &len) override {
@@ -770,7 +769,6 @@ private:
   ModeChangeStatus mode_change_state_{DisableStep};
   MotorModeCmd motor_mode_cmd_{ModeNone};
   uint32_t tx_base_id_{0};
-  uint32_t last_rx_timestamp_{0};
 };
 
 class VESCMotor : public CanDevice, public MotorBase {
@@ -829,7 +827,7 @@ public:
     duty_ = static_cast<float>(duty_raw) * 0.001f;       // 转换为 -1.0 ~ 1.0
 
     // 更新时间戳
-    last_rx_timestamp_ = HAL_GetTick();
+    last_rx_timestamp_s = DWT_GetTimeline_s();
   }
 
   void setMotorPoles(const uint16_t config){ Motor_Poles_ = config; }
@@ -838,6 +836,8 @@ public:
     Motor_ControlCmd_.cmd = cmd;
     Motor_ControlCmd_.mode = mode;
   }
+
+  float getCurrentRPM(void){ return RPM_; }
 
   CanBus::ClassicPack VESCMotorCanTrans(){
     CanBus::ClassicPack pack;
