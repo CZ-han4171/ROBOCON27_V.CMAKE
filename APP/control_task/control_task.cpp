@@ -16,6 +16,7 @@
 #include "pid_controller.h"
 #include "chassis_task.h"
 #include "rm_pocket.hpp"
+#include "tool.hpp"
 #include "topic_pool.h"
 #include "topics.hpp"
 #include "bsp_usart.h"
@@ -24,6 +25,8 @@
 #include <cstdint>
 #include "control_Traject.hpp"
 #include "Motor.hpp"
+#include "MotorControl.hpp"
+#include "Axis.hpp"
 
 osThreadId_t ControlTaskHandle;
 
@@ -48,14 +51,18 @@ pub_chassis_cmd state_now_cmd{};
 //debug begin
 extern VESCMotor U8_3;
 extern C620Motor arm3508_motor;
-PID_t DJI3508_SpeedPid{.Kp = 800.0f,.Ki = 2000.0f,.Kd = 0.01f,.MaxOut = 16000.0f,.DeadBand = 0.0f,.Improve = IMCREATEMENT_OF_OUT};
+extern DJIMotorController arm3508_controller;
+extern RotaryAxis arm3508_Axis;
 int32_t U8_3_erpm = 0;
+
+// PID_t DJI3508_SpeedPid{.Kp = 800.0f,.Ki = 2000.0f,.Kd = 0.01f,.MaxOut = 16000.0f,.DeadBand = 0.0f,.Improve = IMCREATEMENT_OF_OUT};
 float DJI3508_w_rad_aim = 0;
-float DJI3508_current = 0;
-float DJI3508_w_rad_return = 0;
-float_t all_time = 0;
-float_t debug_dt;
-uint32_t debug_DWT_CNT;
+float DJI3508_pos_deg_aim = 0;
+// float DJI3508_current = 0;
+// float DJI3508_w_rad_return = 0;
+// float_t all_time = 0;
+// float_t debug_dt;
+// uint32_t debug_DWT_CNT;
 //debug end
 
 void controlInit() {
@@ -95,6 +102,9 @@ void controlTask(void *argument) {
     control_rm_cmd.joyRHori = kJoyCenter;
     control_rm_cmd.joyRVert = kJoyCenter;
 
+    arm3508_controller.ConfigSpeedPid({800.0f,2000.0f,0.01f,16000.0f,0.0f,IMCREATEMENT_OF_OUT});
+    arm3508_controller.ConfigPosPid({5.0f,0.3f,0.01f,4*M_PI,0.1f,NONE});
+
     controlInit();
     // uint32_t last_time = HAL_GetTick();
 
@@ -126,13 +136,16 @@ void controlTask(void *argument) {
             robot_v_aim_cmd.omega_ = rm_cmd.omega_;    
         }
 
-        debug_dt = DWT_GetDeltaT(&debug_DWT_CNT);
-        all_time = all_time + debug_dt;
+        // debug_dt = DWT_GetDeltaT(&debug_DWT_CNT);
+        // all_time = all_time + debug_dt;
 
-        // DJI3508_w_rad_aim = M_PI - M_PI*cosf(all_time*3.0f);
-        DJI3508_w_rad_return = arm3508_motor.getCurrentSpeed();
-        DJI3508_current = PID_Calculate(&DJI3508_SpeedPid, DJI3508_w_rad_return , DJI3508_w_rad_aim);
-        arm3508_motor.setMotorCmd(DJI3508_current);
+        // // DJI3508_w_rad_aim = M_PI - M_PI*cosf(all_time*3.0f);
+        // DJI3508_w_rad_return = arm3508_motor.getCurrentSpeed();
+        // DJI3508_current = PID_Calculate(&DJI3508_SpeedPid, DJI3508_w_rad_return , DJI3508_w_rad_aim);
+        // arm3508_motor.setMotorCmd(DJI3508_current);
+
+        arm3508_Axis.setAxisPos_rad(DJI3508_pos_deg_aim*kDegToRad);
+        // arm3508_Axis.setAxisSpeed_rad_s(DJI3508_w_rad_aim);
 
         U8_3.setMotorCtrl(U8_3_erpm, VESCMotor::VESC_MODE::SET_ERPM);
 

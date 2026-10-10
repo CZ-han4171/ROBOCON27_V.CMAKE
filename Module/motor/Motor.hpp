@@ -23,6 +23,7 @@
 #include "main.h"
 #include <cmath>
 #include <cstdint>
+#include <math.h>
 #include <stdint.h>
 #include "bsp_dwt.h"
 
@@ -60,7 +61,7 @@ public:
   float getRawCurrentSpeed(void) const { return raw_speed_; }
   float getRawCurrentTorque(void) const { return raw_torque_; }
 
-  __weak bool isOffline() const { return (DWT_GetTimeline_s() - last_rx_timestamp_s > MOTOR_RX_TIMEOUT_S);}
+  virtual bool isOffline() { return (DWT_GetTimeline_s() - last_rx_timestamp_s > MOTOR_RX_TIMEOUT_S);}
   uint32_t getRxTimestamp() const { return last_rx_timestamp_s; }
 
   // 报文时间戳
@@ -81,6 +82,8 @@ public:
 
   // 配置减速比(转子->输出端)
   float single_pos_{0};  // 单圈位置
+  float single_pos_last_{0};  // 单圈位置_上次
+  float single_pos_delat_{0};  // 单圈位置_差值
   float sum_pos_{0};     // 多圈累加
   float speed_{0};       // 速度
   float torque_{0};      // 力矩
@@ -127,15 +130,15 @@ public:
       int32_t total_encoder = round_cnt_ * 8192 + encoder_ - encoder_offset_;
 
       // 转子侧位置
-      raw_single_pos_ = static_cast<float>(encoder_) / encoder_angle_ratio_;
-      raw_sum_pos_ = static_cast<float>(total_encoder) / encoder_angle_ratio_;
+      raw_single_pos_ = static_cast<float>(encoder_) / encoder_rad_ratio_;
+      raw_sum_pos_ = static_cast<float>(total_encoder) / encoder_rad_ratio_;
 
       // 输出端位置（考虑减速比）
       single_pos_ = raw_single_pos_ / reduction_ratio_;
       sum_pos_ = raw_sum_pos_ / reduction_ratio_;
-      single_pos_ = std::fmod(sum_pos_, 360.0f);
+      single_pos_ = std::fmod(sum_pos_, 2*M_PI);
       if (single_pos_ < 0.0f)
-        single_pos_ += 360.0f;
+        single_pos_ += 2*M_PI;
     } else {
       encoder_offset_ = encoder_;
       is_encoder_init = true;
@@ -169,7 +172,7 @@ public:
     return false;
   }
 
-  float cmdTrans() { return cmd_ * (10000.f / 10000.0f); }
+  float cmdTrans() { return cmd_ * 10000.f / 10000.0f; }
 
 private:
   // 编码器相关
@@ -179,6 +182,7 @@ private:
   uint16_t last_encoder_{0};
   int32_t round_cnt_{0};
   float encoder_angle_ratio_ = 8192.0f / 360.0f;
+  float encoder_rad_ratio_ = 8192.0f / 2.0f*M_PI;
 
   // 电流转力矩
   float current_to_torque_{0.0f}; // M3508: 0.2 Nm/A
@@ -212,13 +216,13 @@ public:
       int32_t total_encoder = round_cnt_ * 8192 + encoder_ - encoder_offset_;
 
       // 转子侧位置
-      raw_single_pos_ = static_cast<float>(encoder_) / encoder_angle_ratio_;
-      raw_sum_pos_ = static_cast<float>(total_encoder) / encoder_angle_ratio_;
+      raw_single_pos_ = static_cast<float>(encoder_) / encoder_rad_ratio_;
+      raw_sum_pos_ = static_cast<float>(total_encoder) / encoder_rad_ratio_;
 
       // 输出端位置（考虑减速比）
       single_pos_ = raw_single_pos_ / reduction_ratio_;
       sum_pos_ = raw_sum_pos_ / reduction_ratio_;
-      single_pos_ = std::fmod(sum_pos_, 360.0f);
+      single_pos_ = std::fmod(sum_pos_, 2*M_PI);
       if (single_pos_ < 0.0f)
         single_pos_ += 360.0f;
     } else {
@@ -245,7 +249,7 @@ public:
     last_rx_timestamp_s = DWT_GetTimeline_s();
   }
 
-  float cmdTrans() { return cmd_ * 16384.f / 20000.0f; }
+  float cmdTrans() { return cmd_ ; }
 
   bool buildTx(uint8_t data[8], uint8_t &len) override {
     // C610 不单独发帧，返回 false
@@ -259,7 +263,7 @@ public:
   //   return (HAL_GetTick() - last_rx_timestamp_ > MOTOR_RX_TIMEOUT_MS);
   // }
 
-private:
+private:  
   // 编码器相关
   bool is_encoder_init{false};
   uint16_t encoder_offset_{0};
@@ -267,12 +271,14 @@ private:
   uint16_t last_encoder_{0};
   int32_t round_cnt_{0};
   float encoder_angle_ratio_ = 8192.0f / 360.0f;
+  float encoder_rad_ratio_ = 8192.0f / (2.0f*M_PI);
 
   // 电流转力矩
   float current_to_torque_{0.0f}; // M2006: 0.2 Nm/A
 
   // // 报文时间戳
   // uint32_t last_rx_timestamp_{0};
+
 };
 
 class GM6020Motor : public CanDevice, public MotorBase {
@@ -562,6 +568,8 @@ public:
     raw_torque_ = uint_to_float(torque_raw_, MIT_T_MIN, MIT_T_MAX, 12);
 
     single_pos_ = raw_single_pos_ / reduction_ratio_;
+    single_pos_delat_ = single_pos_ - single_pos_last_;
+
     raw_sum_pos_ = raw_single_pos_;
     sum_pos_ = single_pos_;
     speed_ = raw_speed_ / reduction_ratio_;
@@ -764,6 +772,8 @@ private:
   float target_kd_{0.0f};
   float target_current_{0.0f};
 
+  int32_t round_cnt_{0};
+
   ControlMode ctrl_mode_{PosWithSpeed};
   ControlMode target_mode_{PosWithSpeed};
   ModeChangeStatus mode_change_state_{DisableStep};
@@ -798,8 +808,7 @@ public:
     uint8_t mode = 1;
   } VESC_ControlCmd;
 
-  VESCMotor(CanBus *manager, uint32_t id, bool is_extid, uint32_t tx_id,
-              bool tx_is_extid)
+  VESCMotor(CanBus *manager, uint32_t id, bool is_extid, uint32_t tx_id,bool tx_is_extid)
       : CanDevice(manager, id, is_extid, tx_id, tx_is_extid) {}
   
   void init(float reduction_ratio, uint16_t MotorPoles) {
@@ -823,6 +832,7 @@ public:
 
     // 将解析出的数据转换为标准单位并存入成员变量
     RPM_ = eRPM_to_RPM(eRPM_);
+    speed_ = RPM_*RPM_2_RAD_PER_SEC;
     current_ = static_cast<float>(current_raw) * 100.0f; // 转换为 mA
     duty_ = static_cast<float>(duty_raw) * 0.001f;       // 转换为 -1.0 ~ 1.0
 
@@ -838,6 +848,7 @@ public:
   }
 
   float getCurrentRPM(void){ return RPM_; }
+  float getMotorPoles(void){ return Motor_Poles_; }
 
   CanBus::ClassicPack VESCMotorCanTrans(){
     CanBus::ClassicPack pack;
