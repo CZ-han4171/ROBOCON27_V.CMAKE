@@ -13,6 +13,7 @@
  */
 #include "com_config.h"
 #include "FreeRTOS.h"
+#include "MotorControl.hpp"
 #include "cmsis_os2.h"
 #include "pid_controller.h"
 #include "portmacro.h"
@@ -23,6 +24,7 @@
 
 #include "Canbus.hpp"
 #include "Motor.hpp"
+#include "Axis.hpp"
 #include "Position.hpp"
 #include "ROSCom.hpp"
 #include "UartPort.hpp"
@@ -88,9 +90,12 @@ VESCMotor U8_4(&fdcan1_bus, 0x968, true, 104, true);
 
 //上层电机
 C610Motor arm2006_motor(&fdcan2_bus, 0x205, 0, 0x1FF, 0);
+
+DM4310Motor arm4310_motor(&fdcan2_bus, 0x301, 0, 0x01, 0,DM4310Motor::PosWithSpeed);
+
 C620Motor arm3508_motor(&fdcan2_bus, 0x206, 0, 0x1FF, 0);
-DM4310Motor arm4310_motor(&fdcan2_bus, 0x301, 0, 0x01, 0,
-                         DM4310Motor::PosWithSpeed);
+DJIMotorController arm3508_controller(arm3508_motor);
+RotaryAxis arm3508_Axis(arm3508_controller, 1.0f);
 
 
 // 串口外设（回调+信号量唤醒处理线程进行解包）
