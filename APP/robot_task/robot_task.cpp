@@ -36,21 +36,12 @@ extern osThreadId_t uart2ProcessTaskHandle;
 extern osThreadId_t uart3ProcessTaskHandle;
 extern osThreadId_t uart4ProcessTaskHandle;
 extern osThreadId_t uart5ProcessTaskHandle;
-extern osThreadId_t uart1ProcessTaskHandle;
-extern osThreadId_t uart6ProcessTaskHandle;
-extern osThreadId_t uart8ProcessTaskHandle;
-extern osThreadId_t uart9ProcessTaskHandle;
-extern osThreadId_t uart10ProcessTaskHandle; 
 extern osThreadId_t Debug_TaskHandle;
 extern osThreadId_t ChassisTaskHandle;
 extern osThreadId_t ControlTaskHandle;
-extern osThreadId_t DisplayTaskHandle;
 extern osThreadId_t usbcdcProcessTaskHandle;
 extern osThreadId_t usbcdcSendTaskHandle;
-extern osThreadId_t PosCtrlTaskHandle;
 extern osThreadId_t DebugSerialTaskHandle;
-extern osThreadId_t omniIrSendTaskHandle;
-extern osThreadId_t whisperIrSendTaskHandle;
 
 
 void osTaskInit(void) {

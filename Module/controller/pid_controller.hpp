@@ -129,6 +129,21 @@ typedef struct PID_T
     void (*User_Func2_f)(struct PID_T *pid);
 } PID_t;
 
+struct PidParam {
+    float kp;
+    float ki;
+    float kd;
+    float max_out;
+    float deadband;
+    uint16_t improve;
+
+        PidParam(float kp_in = 0.0f, float ki_in = 0.0f,
+                      float kd_in = 0.0f, float max_out_in = 0.0f,
+                      float deadband_in = 0.0f, uint16_t improve_in = NONE)
+            : kp(kp_in), ki(ki_in), kd(kd_in), max_out(max_out_in),
+              deadband(deadband_in), improve(improve_in) {}
+};
+
 void PID_Init(PID_t *pid);
 
 

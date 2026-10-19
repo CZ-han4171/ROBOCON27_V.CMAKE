@@ -13,10 +13,11 @@
  */
 
 #include "chassis_task.h"
+#include "Axis.hpp"
 #include "Motor.hpp"
 #include "chassis_solution.hpp"
 #include "com_config.h"
-#include "pid_controller.h"
+#include "pid_controller.hpp"
 #include "topic_pool.h"
 #include "topics.hpp"
 #include <array>
@@ -26,6 +27,8 @@ osThreadId_t ChassisTaskHandle;
 
 // 底盘电机实例声明
 extern C620Motor chassis_motor1, chassis_motor2, chassis_motor3, chassis_motor4;
+extern RotaryAxis SwerveDrive1, SwerveDrive2, SwerveDrive3, SwerveDrive4;
+extern RotaryAxis SwerveSteer1, SwerveSteer2, SwerveSteer3, SwerveSteer4;
 
 // 底盘控制命令订阅
 static TypedTopicSubscriber<pub_chassis_cmd> chassis_cmd_sub("chassis_cmd", 8);

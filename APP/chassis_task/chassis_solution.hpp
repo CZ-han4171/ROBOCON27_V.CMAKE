@@ -13,8 +13,10 @@
  */
 #pragma once
 
+#include "Axis.hpp"
+#include "Encoder.hpp"
 #include "Motor.hpp"
-#include "pid_controller.h"
+#include "pid_controller.hpp"
 #include "topic_pool.h"
 #include "tool.hpp"
 
@@ -221,12 +223,14 @@ public:
     };
 
     // 轮序固定为 [左上, 右上, 左下, 右下]
-    SwerveChassis4(VESCMotor &DriveMotor_1, VESCMotor &DriveMotor_2, VESCMotor &DriveMotor_3, VESCMotor &DriveMotor_4,
-                   DM4310Motor &SteerMotor_1, DM4310Motor &SteerMotor_2, DM4310Motor &SteerMotor_3, DM4310Motor &SteerMotor_4,
+    SwerveChassis4(RotaryAxis &DriveMotor_1, RotaryAxis &DriveMotor_2, RotaryAxis &DriveMotor_3, RotaryAxis &DriveMotor_4,
+                   RotaryAxis &SteerMotor_1, RotaryAxis &SteerMotor_2, RotaryAxis &SteerMotor_3, RotaryAxis &SteerMotor_4,
+                   BRT38B     &Encoder_1,    BRT38B     &Encoder_2,    BRT38B     &Encoder_3,    BRT38B     &Encoder_4,
                 const std::array<PidParam, kWheelCount> &pid_params)
                 // const std::array<Geometry, kWheelCount> &Geometries)
         : DriveMotors_{&DriveMotor_1, &DriveMotor_2, &DriveMotor_3, &DriveMotor_4},
-          SteerMotors_{&SteerMotor_1, &SteerMotor_2, &SteerMotor_3, &SteerMotor_4}
+          SteerMotors_{&SteerMotor_1, &SteerMotor_2, &SteerMotor_3, &SteerMotor_4},
+          Encoders_{&Encoder_1, &Encoder_2, &Encoder_3, &Encoder_4}
         //   geometry_(geometry) {
         {
         setWheelDirectionSign({SwerveDirection::kPositive, SwerveDirection::kPositive, SwerveDirection::kPositive, SwerveDirection::kPositive});
@@ -271,9 +275,9 @@ public:
             Swerve_speed.x = vx - wz*Geometries_[i].wheel_position_m.y;
             Swerve_speed.y = vy + wz*Geometries_[i].wheel_position_m.x;
 
-            const float mps_to_rpm_s =  M_PI / Geometries_[i].wheel_diameter_m;
-            target_speed_rpm_s_[i]  = sqrtf(Swerve_speed.x*Swerve_speed.x + Swerve_speed.y*Swerve_speed.y)*mps_to_rpm_s;
-            target_speed_rpm_s_[i] *= direction_sign_[i];
+            const float mps_to_rad_s =  2.0f / Geometries_[i].wheel_diameter_m;
+            target_speed_rad_s_[i]  = sqrtf(Swerve_speed.x*Swerve_speed.x + Swerve_speed.y*Swerve_speed.y)*mps_to_rad_s;
+            target_speed_rad_s_[i] *= direction_sign_[i];
             target_raw_steer_rad[i] = atan2f(Swerve_speed.y, Swerve_speed.x);
 
             if(abs(target_raw_steer_rad[i] - target_raw_steer_rad_last[i]) > M_PI_2){
@@ -296,20 +300,13 @@ public:
     void run(const pub_chassis_cmd &cmd) {
         solveWheelRadPerSec(cmd);
         for (size_t i = 0; i < kWheelCount; ++i) {
-            pid_speed_output_[i] = PID_Calculate(
-                &speed_pid_[i],
-                DriveMotors_[i]->getCurrentRPM(), // 输出轴转速(rpm/s)
-                target_speed_rpm_s_[i]);
-            DriveMotors_[i]->setMotorCtrl(pid_speed_output_[i], VESCMotor::VESC_MODE::SET_CURRENT);
-
-            DriveMotors_[i]->manager_->addCanMsg(DriveMotors_[i]->VESCMotorCanTrans());
-            SteerMotors_[i]->posWithSpeedControl(target_steer_motor_rad[i], M_PI*10.0f);
+            float DriveSpeed_In = target_speed_rad_s_[i] + SteerMotors_[i]->getAxisSpeed_rad()/DriveMotors_[i]->getMotorPerOutput();
+            DriveMotors_[i]->setAxisSpeed_rad_s(DriveSpeed_In);
+            SteerMotors_[i]->setAxisPos_rad(target_steer_motor_rad[i],Encoders_[i]->getSumPos_rad());
         }
     }
 
-    const std::array<float, 4> &targetRPMPerSec() const {
-        return target_speed_rpm_s_;
-    }
+    const std::array<float, 4> &targetRADPerSec() const { return target_speed_rad_s_; }
     const std::array<float, 4> &pidOutput() const { return pid_speed_output_; }
     const PID_t &pid(WheelIndex wheel) const { return speed_pid_[wheel]; }
 
@@ -327,13 +324,14 @@ private:
         PID_Init(&pid);
     }
 
-    std::array<VESCMotor *, 4> DriveMotors_{};
-    std::array<DM4310Motor *, 4> SteerMotors_{};
+    std::array<RotaryAxis *, 4> DriveMotors_{};
+    std::array<RotaryAxis *, 4> SteerMotors_{};
+    std::array<BRT38B *, 4> Encoders_{};
     std::array<Geometry, kWheelCount> Geometries_{};
     std::array<SwerveDirection, kWheelCount> direction_sign_{};
     std::array<PID_t, kWheelCount> speed_pid_{};
     std::array<PID_t, kWheelCount> steer_pid_{};
-    std::array<float, kWheelCount> target_speed_rpm_s_{};
+    std::array<float, kWheelCount> target_speed_rad_s_{};
     std::array<float, kWheelCount> target_raw_steer_rad{};
     std::array<float, kWheelCount> target_raw_steer_rad_last{};
     std::array<float, kWheelCount> target_steer_motor_rad{};

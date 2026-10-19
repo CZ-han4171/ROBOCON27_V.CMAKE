@@ -11,9 +11,10 @@
  * @note 
  */
 
+#include "chassis_solution.hpp"
 #include "main.h"
 #include "control_task.h"
-#include "pid_controller.h"
+#include "pid_controller.hpp"
 #include "chassis_task.h"
 #include "rm_pocket.hpp"
 #include "tool.hpp"
@@ -27,6 +28,7 @@
 #include "Motor.hpp"
 #include "MotorControl.hpp"
 #include "Axis.hpp"
+#include "Encoder.hpp"
 
 osThreadId_t ControlTaskHandle;
 
@@ -49,11 +51,22 @@ pub_chassis_cmd robot_v_aim_cmd{};
 pub_chassis_cmd state_now_cmd{};
 
 //debug begin
-extern VESCMotor U8_3;
+extern VESCMotor U8_motor3;
 extern C620Motor arm3508_motor;
 extern DJIMotorController arm3508_controller;
 extern RotaryAxis arm3508_Axis;
+float EncoderSumPos_rad = 0.0f;
 int32_t U8_3_erpm = 0;
+
+extern RotaryAxis SwerveSteer1;
+extern DJIMotorController DJI2006_controller1;
+extern C610Motor DJI2006_motor1;
+extern BRT38B Encoder_1;
+float Cmd2006 = 0.0f;
+float SteerPos_Deg = 0.0f;
+
+extern PidParam M2006_P38_SpeedPid;
+extern PidParam M2006_P38_PosPid;
 
 // PID_t DJI3508_SpeedPid{.Kp = 800.0f,.Ki = 2000.0f,.Kd = 0.01f,.MaxOut = 16000.0f,.DeadBand = 0.0f,.Improve = IMCREATEMENT_OF_OUT};
 float DJI3508_w_rad_aim = 0;
@@ -105,6 +118,9 @@ void controlTask(void *argument) {
     arm3508_controller.ConfigSpeedPid({800.0f,2000.0f,0.01f,16000.0f,0.0f,IMCREATEMENT_OF_OUT});
     arm3508_controller.ConfigPosPid({5.0f,0.3f,0.01f,4*M_PI,0.1f,NONE});
 
+    DJI2006_controller1.ConfigSpeedPid(M2006_P38_SpeedPid);
+    DJI2006_controller1.ConfigPosPid(M2006_P38_PosPid) ;
+
     controlInit();
     // uint32_t last_time = HAL_GetTick();
 
@@ -146,8 +162,14 @@ void controlTask(void *argument) {
 
         arm3508_Axis.setAxisPos_rad(DJI3508_pos_deg_aim*kDegToRad);
         // arm3508_Axis.setAxisSpeed_rad_s(DJI3508_w_rad_aim);
+        EncoderSumPos_rad = Encoder_1.getSumPos_rad();
 
-        U8_3.setMotorCtrl(U8_3_erpm, VESCMotor::VESC_MODE::SET_ERPM);
+        SwerveSteer1.setAxisPos_rad(SteerPos_Deg*kDegToRad,Encoder_1.getSumPos_rad());
+        // DJI2006_motor1.setMotorCmd(1000.0f);
+
+        Cmd2006 = DJI2006_motor1.cmdTrans();
+
+        U8_motor3.setMotorCtrl(U8_3_erpm, VESCMotor::VESC_MODE::SET_ERPM);
 
         chassis_data_pub.Publish(robot_v_aim_cmd);
 

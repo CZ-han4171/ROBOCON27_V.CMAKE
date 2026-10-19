@@ -130,8 +130,9 @@ private:
   // 总共有3个fdcan
   static CanBus *map[3];
 
-  // can总线最多挂6个设备
-  CanDevice *device_[6];
+  // can总线最多挂12个设备
+  static constexpr uint8_t kMaxDevices = 12;
+  CanDevice *device_[kMaxDevices];
 
   uint32_t txMailbox;
 };

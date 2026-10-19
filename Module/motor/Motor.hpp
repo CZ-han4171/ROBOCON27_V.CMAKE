@@ -68,7 +68,7 @@ public:
   float last_rx_timestamp_s{0};
 
   // 电机最原始output指令(速度/位置/电流)
-  float cmd_;
+  float cmd_{0};
   float max_cmd_{99999};
 
   // 电机减速比
@@ -182,7 +182,7 @@ private:
   uint16_t last_encoder_{0};
   int32_t round_cnt_{0};
   float encoder_angle_ratio_ = 8192.0f / 360.0f;
-  float encoder_rad_ratio_ = 8192.0f / 2.0f*M_PI;
+  float encoder_rad_ratio_ = 8192.0f / (2.0f*M_PI);
 
   // 电流转力矩
   float current_to_torque_{0.0f}; // M3508: 0.2 Nm/A
@@ -844,7 +844,7 @@ public:
 
   void setMotorCtrl(float_t cmd, uint8_t mode){
     Motor_ControlCmd_.cmd = cmd;
-    Motor_ControlCmd_.mode = mode;
+    Motor_ControlCmd_.mode = mode; 
   }
 
   float getCurrentRPM(void){ return RPM_; }

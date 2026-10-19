@@ -12,10 +12,11 @@
  * @versioninfo :
  */
 #include "com_config.h"
+#include "Encoder.hpp"
 #include "FreeRTOS.h"
 #include "MotorControl.hpp"
 #include "cmsis_os2.h"
-#include "pid_controller.h"
+#include "pid_controller.hpp"
 #include "portmacro.h"
 #include "stm32h7xx_hal.h"
 #include "stm32h7xx_hal_def.h"
@@ -51,21 +52,14 @@
 osThreadId_t CAN1_Send_TaskHandle;
 osThreadId_t CAN2_Send_TaskHandle;
 osThreadId_t CAN3_Send_TaskHandle;
-osThreadId_t uart3SendTaskHandle;
 osThreadId_t uart2ProcessTaskHandle;
 osThreadId_t uart3ProcessTaskHandle;
+osThreadId_t uart3SendTaskHandle;
 osThreadId_t uart4ProcessTaskHandle;
-osThreadId_t uart1ProcessTaskHandle;
-osThreadId_t uart6ProcessTaskHandle;
-osThreadId_t uart8ProcessTaskHandle;
-osThreadId_t uart9ProcessTaskHandle;
 osThreadId_t uart5ProcessTaskHandle;
-osThreadId_t uart10ProcessTaskHandle;
-osThreadId_t usbcdcProcessTaskHandle;
 osThreadId_t DebugSerialTaskHandle;
+osThreadId_t usbcdcProcessTaskHandle;
 osThreadId_t usbcdcSendTaskHandle;
-osThreadId_t omniIrSendTaskHandle;
-osThreadId_t whisperIrSendTaskHandle;
 
 extern FDCAN_HandleTypeDef hfdcan1;
 extern FDCAN_HandleTypeDef hfdcan2;
@@ -77,23 +71,49 @@ CanBus fdcan3_bus(hfdcan3);
 
 // can设备
 
-// 底盘电机
+//舵轮底盘设备
+VESCMotor U8_motor1(&fdcan1_bus, 0x965, true, 101, true);
+VESCMotor U8_motor2(&fdcan1_bus, 0x966, true, 102, true);
+VESCMotor U8_motor3(&fdcan1_bus, 0x967, true, 103, true);
+VESCMotor U8_motor4(&fdcan1_bus, 0x968, true, 104, true);
+BRT38B Encoder_1(&fdcan2_bus, 0x01, false, 0x01, false);
+BRT38B Encoder_2(&fdcan2_bus, 0x02, false, 0x02, false);
+BRT38B Encoder_3(&fdcan2_bus, 0x03, false, 0x03, false);
+BRT38B Encoder_4(&fdcan2_bus, 0x04, false, 0x04, false);
+C610Motor DJI2006_motor1(&fdcan2_bus, 0x205, false, 0x1FF, false);
+C610Motor DJI2006_motor2(&fdcan2_bus, 0x206, false, 0x1FF, false);
+C610Motor DJI2006_motor3(&fdcan2_bus, 0x207, false, 0x1FF, false);
+C610Motor DJI2006_motor4(&fdcan2_bus, 0x208, false, 0x1FF, false);
+
+VESCMotorController U8_controller1(U8_motor1);
+VESCMotorController U8_controller2(U8_motor2);
+VESCMotorController U8_controller3(U8_motor3);
+VESCMotorController U8_controller4(U8_motor4);
+DJIMotorController DJI2006_controller1(DJI2006_motor1);
+DJIMotorController DJI2006_controller2(DJI2006_motor2);
+DJIMotorController DJI2006_controller3(DJI2006_motor3);
+DJIMotorController DJI2006_controller4(DJI2006_motor4);
+
+RotaryAxis SwerveDrive1(U8_controller1,4.0f);
+RotaryAxis SwerveDrive2(U8_controller2,4.0f);
+RotaryAxis SwerveDrive3(U8_controller3,4.0f);
+RotaryAxis SwerveDrive4(U8_controller4,4.0f);
+RotaryAxis SwerveSteer1(DJI2006_controller1,-112.0f/19.0f,4.0f);
+RotaryAxis SwerveSteer2(DJI2006_controller2,-112.0f/19.0f,4.0f);
+RotaryAxis SwerveSteer3(DJI2006_controller3,-112.0f/19.0f,4.0f);
+RotaryAxis SwerveSteer4(DJI2006_controller4,-112.0f/19.0f,4.0f);
+
+
+// 全向轮底盘设备
 C620Motor chassis_motor1(&fdcan3_bus, 0x201, 0, 0x200, 0);
 C620Motor chassis_motor2(&fdcan3_bus, 0x202, 0, 0x200, 0);
 C620Motor chassis_motor3(&fdcan3_bus, 0x203, 0, 0x200, 0);
 C620Motor chassis_motor4(&fdcan3_bus, 0x204, 0, 0x200, 0);
 
-VESCMotor U8_1(&fdcan1_bus, 0x965, true, 101, true);
-VESCMotor U8_2(&fdcan1_bus, 0x966, true, 102, true);
-VESCMotor U8_3(&fdcan1_bus, 0x967, true, 103, true);
-VESCMotor U8_4(&fdcan1_bus, 0x968, true, 104, true);
-
 //上层电机
-C610Motor arm2006_motor(&fdcan2_bus, 0x205, 0, 0x1FF, 0);
-
 DM4310Motor arm4310_motor(&fdcan2_bus, 0x301, 0, 0x01, 0,DM4310Motor::PosWithSpeed);
 
-C620Motor arm3508_motor(&fdcan2_bus, 0x206, 0, 0x1FF, 0);
+C620Motor arm3508_motor(&fdcan3_bus, 0x206, 0, 0x1FF, 0);
 DJIMotorController arm3508_controller(arm3508_motor);
 RotaryAxis arm3508_Axis(arm3508_controller, 1.0f);
 
@@ -202,31 +222,45 @@ uint8_t comServiceInit() {
   chassis_motor3.init();
   chassis_motor4.init();
 
-  U8_1.init(1.0f, 21);
-  U8_2.init(1.0f, 21);
-  U8_3.init(1.0f, 21);
-  U8_4.init(1.0f, 21);
+  U8_motor1.init(1.0f, 21);
+  U8_motor2.init(1.0f, 21);
+  U8_motor3.init(1.0f, 21);
+  U8_motor4.init(1.0f, 21);
+  Encoder_1.init(4096,16);
+  Encoder_2.init(4096,16);
+  Encoder_3.init(4096,16);
+  Encoder_4.init(4096,16);
+  DJI2006_motor1.init();
+  DJI2006_motor2.init();
+  DJI2006_motor3.init();
+  DJI2006_motor4.init();
 
-  arm2006_motor.init();
   arm3508_motor.init();
   arm4310_motor.init();
 
-  // ---- 底盘电机初始化 ----
+  //can设备注册
+  fdcan2_bus.registerDevice(&Encoder_1);
+  fdcan2_bus.registerDevice(&Encoder_2);
+  fdcan2_bus.registerDevice(&Encoder_3);
+  fdcan2_bus.registerDevice(&Encoder_4);
+  fdcan2_bus.registerDevice(&DJI2006_motor1);
+  fdcan2_bus.registerDevice(&DJI2006_motor2);
+  fdcan2_bus.registerDevice(&DJI2006_motor3);
+  fdcan2_bus.registerDevice(&DJI2006_motor4);
+  fdcan1_bus.registerDevice(&U8_motor1);
+  fdcan1_bus.registerDevice(&U8_motor2);
+  fdcan1_bus.registerDevice(&U8_motor3);
+  fdcan1_bus.registerDevice(&U8_motor4);
+
   fdcan3_bus.registerDevice(&chassis_motor1);
   fdcan3_bus.registerDevice(&chassis_motor2);
   fdcan3_bus.registerDevice(&chassis_motor3);
   fdcan3_bus.registerDevice(&chassis_motor4);
 
-  // ---- 上层电机初始化 ----
-  fdcan2_bus.registerDevice(&arm2006_motor);
-  fdcan2_bus.registerDevice(&arm3508_motor);
+  // fdcan2_bus.registerDevice(&arm2006_motor);
+  fdcan3_bus.registerDevice(&arm3508_motor);
   fdcan2_bus.registerDevice(&arm4310_motor);
 
-  fdcan1_bus.registerDevice(&U8_1);
-  fdcan1_bus.registerDevice(&U8_2);
-  fdcan1_bus.registerDevice(&U8_3);
-  fdcan1_bus.registerDevice(&U8_4);
-  
   // 串口外设
   uart2_rx_semphore = osSemaphoreNew(1, 0, NULL);
   if (uart2_rx_semphore == NULL || uart2_port.startRx() != HAL_OK) {
@@ -301,10 +335,10 @@ void can1SendTask(void *argument) {
 
   for (;;) {
 
-    fdcan1_bus.addCanMsg(U8_1.VESCMotorCanTrans());
-    fdcan1_bus.addCanMsg(U8_2.VESCMotorCanTrans());
-    fdcan1_bus.addCanMsg(U8_3.VESCMotorCanTrans());
-    fdcan1_bus.addCanMsg(U8_4.VESCMotorCanTrans());
+    fdcan1_bus.addCanMsg(U8_motor1.VESCMotorCanTrans());
+    fdcan1_bus.addCanMsg(U8_motor2.VESCMotorCanTrans());
+    fdcan1_bus.addCanMsg(U8_motor3.VESCMotorCanTrans());
+    fdcan1_bus.addCanMsg(U8_motor4.VESCMotorCanTrans());
 
     vTaskDelayUntil(&currentTime, 1); // 每1ms执行一次发送任务
   }
@@ -323,10 +357,10 @@ void can2SendTask(void *argument) {
     int16_t commands[4] = {0};
  
     // arm motor
-    commands[0] = static_cast<int16_t>(arm2006_motor.cmdTrans()); // 0x201
-    commands[1] = static_cast<int16_t>(arm3508_motor.cmdTrans()); // 0x203
-    commands[2] = static_cast<int16_t>(0); // 0x203
-    commands[3] = static_cast<int16_t>(0); // 0x204
+    commands[0] = static_cast<int16_t>(DJI2006_motor1.cmdTrans()); // 0x201
+    commands[1] = static_cast<int16_t>(DJI2006_motor2.cmdTrans()); // 0x203
+    commands[2] = static_cast<int16_t>(DJI2006_motor3.cmdTrans()); // 0x203
+    commands[3] = static_cast<int16_t>(DJI2006_motor4.cmdTrans()); // 0x204
     packDJIMotorCanMsg(pack.id, arm_motor_ids, commands, 4, pack.data, len);
     fdcan2_bus.addCanMsg(pack);
 
@@ -436,16 +470,16 @@ void DebugSerialTask(void *argument) {
     title[1] =  chassis_motor2.isOffline() ? 'X' : 'O';
     title[2] =  chassis_motor3.isOffline() ? 'X' : 'O';
     title[3] =  chassis_motor4.isOffline() ? 'X' : 'O';
-    title[4] =  arm2006_motor.isOffline() ? 'X' : 'O';
-    title[5] =  arm3508_motor.isOffline() ? 'X' : 'O';
-    title[6] =  arm4310_motor.isOffline() ? 'X' : 'O';
+    // title[4] =  arm2006_motor.isOffline() ? 'X' : 'O';
+    title[4] =  arm3508_motor.isOffline() ? 'X' : 'O';
+    title[5] =  arm4310_motor.isOffline() ? 'X' : 'O';
 
 
     motor_status_data.chassis_motor1 = chassis_motor1.isOffline();
     motor_status_data.chassis_motor2 = chassis_motor2.isOffline();
     motor_status_data.chassis_motor3 = chassis_motor3.isOffline();
     motor_status_data.chassis_motor4 = chassis_motor4.isOffline();
-    motor_status_data.arm2006_motor = arm2006_motor.isOffline();
+    // motor_status_data.arm2006_motor = arm2006_motor.isOffline();
     motor_status_data.arm3508_motor = arm3508_motor.isOffline();
     motor_status_data.arm4310_motor = arm4310_motor.isOffline();
 

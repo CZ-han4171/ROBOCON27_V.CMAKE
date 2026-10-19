@@ -190,7 +190,7 @@ uint8_t CanBus::init(void) {
   }
 
   map[idx] = this;
-  for (uint8_t i = 0; i < 6; ++i) {
+  for (uint8_t i = 0; i < kMaxDevices; ++i) {
     device_[i] = nullptr;
   }
   txMailbox = 0;
@@ -203,13 +203,13 @@ uint8_t CanBus::registerDevice(CanDevice *device) {
     return 1;
   }
 
-  for (uint8_t i = 0; i < 6; ++i) {
+  for (uint8_t i = 0; i < kMaxDevices; ++i) {
     if (device_[i] == device) {
       return 0;
     }
   }
 
-  for (uint8_t i = 0; i < 6; ++i) {
+  for (uint8_t i = 0; i < kMaxDevices; ++i) {
     if (device_[i] == nullptr) {
       device_[i] = device;
       return 0;
@@ -239,7 +239,7 @@ void CanBus::processRxInterrupt(uint32_t fifo) {
 
   // 拿到can数据段长度
   const uint8_t len = dlcToBytes(rx_header.DataLength);
-  for (uint8_t i = 0; i < 6; ++i) {
+  for (uint8_t i = 0; i < kMaxDevices; ++i) {
     if (device_[i] == nullptr) {
       continue;
     }
