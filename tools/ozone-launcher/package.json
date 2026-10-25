@@ -1,0 +1,24 @@
+{
+  "name": "cmake-ozone-launcher",
+  "displayName": "CMake Ozone Launcher (Local)",
+  "description": "Build the selected CMake target and open its ELF in SEGGER Ozone.",
+  "version": "0.1.1",
+  "publisher": "robocon-local",
+  "engines": { "vscode": "^1.96.0" },
+  "categories": ["Other"],
+  "main": "./extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "extensionDependencies": ["ms-vscode.cmake-tools"],
+  "extensionKind": ["workspace"],
+  "capabilities": { "untrustedWorkspaces": { "supported": false } },
+  "contributes": {
+    "commands": [{ "command": "ozoneLauncher.open", "title": "Ozone: 构建并打开所选 CMake 目标" }],
+    "configuration": {
+      "title": "CMake Ozone Launcher",
+      "properties": {
+        "ozoneLauncher.enabled": { "type": "boolean", "default": false, "scope": "resource", "description": "在此项目的状态栏显示 Ozone 启动三角。" },
+        "ozoneLauncher.executable": { "type": "string", "default": "", "scope": "machine-overridable", "description": "Ozone 可执行文件的完整路径。留空时自动查找 PATH 和 SEGGER 默认安装目录。" }
+      }
+    }
+  }
+}

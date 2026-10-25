@@ -330,6 +330,7 @@ void onUsbRxCb(const uint8_t *data, size_t len, void *user) {
   }
 }
 
+CanBus::ClassicPack watchcan1[10];
 void can1SendTask(void *argument) {
   TickType_t currentTime = xTaskGetTickCount();
 
@@ -338,6 +339,7 @@ void can1SendTask(void *argument) {
     fdcan1_bus.addCanMsg(U8_motor1.VESCMotorCanTrans());
     fdcan1_bus.addCanMsg(U8_motor2.VESCMotorCanTrans());
     fdcan1_bus.addCanMsg(U8_motor3.VESCMotorCanTrans());
+    watchcan1[2] = U8_motor3.VESCMotorCanTrans();
     fdcan1_bus.addCanMsg(U8_motor4.VESCMotorCanTrans());
 
     vTaskDelayUntil(&currentTime, 1); // 每1ms执行一次发送任务

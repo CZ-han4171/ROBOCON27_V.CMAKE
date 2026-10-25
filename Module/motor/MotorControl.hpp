@@ -29,26 +29,21 @@ class MotorControllerBase {
 public:
     MotorControllerBase() = default;
 
-    struct SpeedPlan{
-        float Vec;
-        float Dec;
-        float Max;
+    enum Control_Improvement{
+        NONE,
+        SPEEDPLAN,
     };
 
-    // struct PidParam {
-    //     float kp;
-    //     float ki;
-    //     float kd;
-    //     float max_out;
-    //     float deadband;
-    //     uint16_t improve;
+    struct PlanParam {
+        float Acc;
+        float Dec;
+        float kPlan2Pid;
+        float MixBegin;
+        float MixEnd;
 
-    //     PidParam(float kp_in = 100.0f, float ki_in = 80.0f,
-    //                   float kd_in = 0.0f, float max_out_in = 20000.0f,
-    //                   float deadband_in = 0.3f, uint16_t improve_in = NONE)
-    //         : kp(kp_in), ki(ki_in), kd(kd_in), max_out(max_out_in),
-    //           deadband(deadband_in), improve(improve_in) {}
-    // };
+        PlanParam(float Acc_in = M_PI, float Dec_in = M_PI, float MixBegin_in = M_PI/4.0f, float Mix_End_in = M_PI/10.0f)
+            :Acc(Acc_in), Dec(Dec_in), MixBegin(MixBegin_in), MixEnd(Mix_End_in){}
+    };
 
     virtual void MotorCurrentCtrl(float current){};
     virtual void MotorSpeedCtrl_rad_s(float speed){};
@@ -67,6 +62,9 @@ public:
         pos_pid_.MaxOut = MaxSpeed_rad_s;
     }
 
+    void ConfigControlImprovement(const Control_Improvement &Improvement){
+        Improvement_ = Improvement;
+    }
     void ConfigSpeedPid(const PidParam &param){
         applyPidParam(speed_pid_, param);
     }
@@ -83,16 +81,11 @@ public:
         pid.Improve = param.improve;
         PID_Init(&pid);
     }
-
-    void applySpeedPlan(const SpeedPlan &speed_plan){
-        speed_plan_ = speed_plan;
+    void applySpeedParam(const PlanParam &plan_param){
+        plan_ = plan_param;
     }
 
-    float watch1;
-    float watch2;
-    float watch3;
-    float watch4;
-    PID_t watch5;
+    float watch[10] = {0};
 
     float pid_speed_output_;
     float pid_single_pos_output_;
@@ -100,7 +93,14 @@ public:
     PID_t speed_pid_{};
     PID_t pos_pid_{};
 
-    SpeedPlan speed_plan_;
+    float plan_pos_output_;
+    float pos_output_;
+
+    float dt;
+    uint32_t DWT_CNT;
+
+    Control_Improvement Improvement_{Control_Improvement::NONE};
+    PlanParam plan_;
 };
 
 class DJIMotorController : public MotorControllerBase{
@@ -116,7 +116,6 @@ public:
                 &speed_pid_,
                 motor_.getCurrentSpeed(), // 输出轴转速(rad/s)
                 speed);
-        watch2 = pid_speed_output_;
         MotorCurrentCtrl(pid_speed_output_);
     }
 
@@ -129,24 +128,60 @@ public:
     }
 
     void MotorSinglePosCtrl_rad(float traget_single_pos, float actual_single_pos) override {
-        float delat = Warp_ToRange(actual_single_pos - traget_single_pos, -M_PI, M_PI);
-        pid_single_pos_output_ = PID_Calculate(
-                &pos_pid_,
-                delat, // 输出轴单圈角度(rad)
-                0);
-        MotorSpeedCtrl_rad_s(pid_single_pos_output_);
+        float delat = Warp_ToRange(traget_single_pos - actual_single_pos, -M_PI, M_PI);
+        MotorSumPosCtrl_rad(delat,0.0f);
     }
 
     void MotorSumPosCtrl_rad(float traget_sum_pos, float actual_sum_pos) override {
-        watch3 = traget_sum_pos;
-        watch4 = actual_sum_pos;
-        pid_sum_pos_output_ = PID_Calculate(
+        float delat = traget_sum_pos - actual_sum_pos;
+        watch[0] = delat;
+        dt = DWT_GetDeltaT(&DWT_CNT);
+        switch(Improvement_) {
+            case Control_Improvement::NONE:
+                pid_sum_pos_output_ = PID_Calculate(
                 &pos_pid_,
                 actual_sum_pos, // 输出轴角度(rad)
                 traget_sum_pos);
-        watch5 = pos_pid_;
-        watch1 = pid_sum_pos_output_;
-        MotorSpeedCtrl_rad_s(pid_sum_pos_output_);
+                pos_output_ = pid_sum_pos_output_;
+                break;
+            case Control_Improvement::SPEEDPLAN:
+                pid_sum_pos_output_ = PID_Calculate(
+                &pos_pid_,
+                actual_sum_pos, // 输出轴角度(rad)
+                traget_sum_pos);
+                plan_pos_output_ = UpdatePlanSpeed(delat);
+                plan_.kPlan2Pid = UpdatePlanK(delat);
+                pos_output_ = plan_pos_output_*plan_.kPlan2Pid + pid_sum_pos_output_*(1-plan_.kPlan2Pid);
+                break;
+        }
+
+        MotorSpeedCtrl_rad_s(pos_output_);
+    }
+
+    float UpdatePlanSpeed(float delat){
+        float w_Acc = fabs(pos_output_) + plan_.Acc*dt;
+        float w_Dec = sqrt(2.0f*plan_.Dec*fabs(delat));
+        float plan_pos_output_tmp;
+        if(pos_pid_.MaxOut < w_Acc && pos_pid_.MaxOut < w_Dec){
+            plan_pos_output_tmp = pos_pid_.MaxOut;
+        }else if(w_Acc > w_Dec){
+            plan_pos_output_tmp = w_Dec;
+        }else {
+            plan_pos_output_tmp = w_Acc;
+        };
+        return plan_pos_output_tmp*sign(delat);
+    };
+
+    float UpdatePlanK(float delat){
+        float K_tmp;
+        if(fabs(delat) > plan_.MixBegin){
+            K_tmp = 1.0f;
+        }else if(fabs(delat) < plan_.MixBegin && fabs(delat) > plan_.MixEnd){
+            K_tmp = (fabs(delat)-(plan_.MixEnd))/((plan_.MixBegin)-(plan_.MixEnd));
+        }else if(fabs(delat) < plan_.MixEnd){
+            K_tmp = 0.0f;
+        }
+        return K_tmp;
     }
 
     float getMotorSpeed_rad(void) override { return motor_.getCurrentSpeed(); }
@@ -174,8 +209,6 @@ public:
         motor_.psiControl(pos,speed,current);
     };
 
-
-
 private:
     DM4310Motor& motor_;
 };
@@ -183,10 +216,10 @@ private:
 class VESCMotorController : public MotorControllerBase{
 public:
     explicit VESCMotorController(VESCMotor& motor) : motor_(motor) {}
-
+    
     enum VESC_SpeedControlMode {
         kVescPid,
-        kLocal_Pid
+        kLocalPid
     };
 
     void MotorCurrentCtrl(float current) override {
@@ -194,7 +227,7 @@ public:
     }
 
     void MotorSpeedCtrl_rad_s(float target_speed_rad_s) override {
-        if(speed_control_mode_ == VESC_SpeedControlMode::kLocal_Pid){
+        if(speed_control_mode_ == VESC_SpeedControlMode::kLocalPid){
             pid_speed_output_ = PID_Calculate(
                 &speed_pid_,
                 motor_.getCurrentSpeed(), // 输出轴转速(rad/s)
@@ -230,6 +263,6 @@ public:
 
 private:
     VESCMotor& motor_;
-    VESC_SpeedControlMode speed_control_mode_ = VESC_SpeedControlMode::kLocal_Pid;
+    VESC_SpeedControlMode speed_control_mode_ = VESC_SpeedControlMode::kLocalPid;
 
 };

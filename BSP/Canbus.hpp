@@ -93,6 +93,7 @@ public:
     uint32_t id;
     Type type;
     uint8_t data[8];
+    uint32_t DLC{8};
   } ClassicPack;
 
   CanBus(FDCAN_HandleTypeDef &impl) : impl_(impl) {}

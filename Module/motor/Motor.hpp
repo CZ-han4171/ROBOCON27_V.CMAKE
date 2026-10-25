@@ -797,11 +797,6 @@ public:
       SET_CURRENT_HANDBRAKE = 8,            // 手刹/驻车电流控制
       SET_CURRENT_HANDBRAKE_REL = 9         // 相对手刹电流控制
   } ;
-  
-  enum VESC_RPM_CONTROL_MODE : uint8_t {
-      VESC_RPM_CONTROL_NATIVE_ERPM = 0, // setTargetRPM 走 VESC 原生 eRPM 闭环
-      VESC_RPM_CONTROL_PID_CURRENT = 1  // setTargetRPM 走本地 PID 速度环 + CURRENT 下发
-  } ;
 
   typedef struct{
     float_t cmd = 0;
@@ -855,16 +850,17 @@ public:
     if(is_extid_){pack.type = CanBus::Type::EXTENDED;}
     else {pack.type = CanBus::Type::STANDARD;}
     pack.id = (modeTrans() << 8) | (tx_id_ & 0xFFU);
+    pack.DLC = 4;
 
     int32_t sendMsgs = static_cast<int32_t>(cmdTrans());
     pack.data[0] = static_cast<int16_t>((sendMsgs >> 24) & 0xFF);
     pack.data[1] = static_cast<int16_t>((sendMsgs >> 16) & 0xFF);
     pack.data[2] = static_cast<int16_t>((sendMsgs >> 8) & 0xFF);
     pack.data[3] = static_cast<int16_t>(sendMsgs & 0xFF);
-    pack.data[4] = static_cast<int16_t>(0);
-    pack.data[5] = static_cast<int16_t>(0);
-    pack.data[6] = static_cast<int16_t>(0);
-    pack.data[7] = static_cast<int16_t>(0);
+    // pack.data[4] = static_cast<int16_t>(0);
+    // pack.data[5] = static_cast<int16_t>(0);
+    // pack.data[6] = static_cast<int16_t>(0);
+    // pack.data[7] = static_cast<int16_t>(0);
 
     return pack;
   }
