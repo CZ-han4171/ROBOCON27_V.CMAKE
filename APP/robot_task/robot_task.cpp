@@ -21,7 +21,7 @@
 /* bsp 层接口头文件 */
 #include "bsp_dwt.h"
 #include "chassis_task.h"
-#include "com_config.h"
+#include "com_config.hpp"
 #include "control_task.h"
 #include "debug_task.h"
 

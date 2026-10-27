@@ -12,7 +12,7 @@
  * @versioninfo :
  */
 #pragma once
-
+#include "Canbus.hpp"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -48,6 +48,10 @@ void posCtrlTask(void *argument);
 void DebugSerialTask(void *argument);
 void omniIrSendTask(void *argument);
 void whisperIrSendTask(void *argument);
+
+extern CanBus fdcan1_bus;
+extern CanBus fdcan2_bus;
+extern CanBus fdcan3_bus;
 
 #ifdef __cplusplus
 }

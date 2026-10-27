@@ -11,11 +11,12 @@
  * @note :
  * @versioninfo :
  */
-#include "robot.h"
+#include "robot.hpp"
 #include "Canbus.hpp"
-#include "com_config.h"
+#include "com_config.hpp"
 #include "robot_task.h"
 #include "topics.hpp"
+#include "robot_setup.hpp"
 
 /* 更多特色功能可以在这里通过宏开关来决定是否使用 */
 
@@ -26,6 +27,8 @@ void Robot_Init() {
   // 初始化DWT计时器，提供计时功能
   DWT_Init(SystemCoreClock / 1000000U);
 
+  // 电机设备初始化
+  RobotDevices_Init();
   // 通信外设初始化
   if (comServiceInit() != 0) {
     Error_Handler();
@@ -34,6 +37,8 @@ void Robot_Init() {
 
   /* freertos任务调度初始化 */
   osTaskInit();
+
+  
 
   /*初始化完成，开启中断 */
   __enable_irq();

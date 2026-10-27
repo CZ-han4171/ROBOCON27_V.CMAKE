@@ -53,9 +53,6 @@ pub_chassis_cmd state_now_cmd{};
 
 //debug begin
 extern VESCMotor U8_motor3;
-extern C620Motor arm3508_motor;
-extern DJIMotorController arm3508_controller;
-extern RotaryAxis arm3508_Axis;
 float EncoderSumPos_rad = 0.0f;
 int32_t U8_3_erpm = 0;
 
@@ -124,18 +121,7 @@ void controlTask(void *argument) {
     control_rm_cmd.joyLVert = kJoyCenter;
     control_rm_cmd.joyRHori = kJoyCenter;
     control_rm_cmd.joyRVert = kJoyCenter;
-
-    arm3508_controller.ConfigSpeedPid({800.0f,2000.0f,0.01f,16000.0f,0.0f,IMCREATEMENT_OF_OUT});
-    arm3508_controller.ConfigPosPid({5.0f,0.3f,0.01f,4*M_PI,0.1f,NONE});
-
-    U8_controller3.ConfigSpeedPid(U8Lite_SpeedPid);
-    U8_controller3.setSpeedPidMode(VESCMotorController::VESC_SpeedControlMode::kVescPid);
-
-    DJI2006_controller1.applySpeedParam({100.0f*M_PI,100.0f*M_PI,M_PI/18.0f,0.0f});
-    DJI2006_controller1.ConfigSpeedPid(M2006_P38_SpeedPid);
-    DJI2006_controller1.ConfigPosPid({3.0f,0.8f,0.0f,25.0f*M_PI,0.05f*kDegToRad,NONE}) ;
-    DJI2006_controller1.ConfigControlImprovement(MotorControllerBase::SPEEDPLAN);
-
+    
     controlInit();
     // uint32_t last_time = HAL_GetTick();
 
@@ -167,38 +153,31 @@ void controlTask(void *argument) {
             robot_v_aim_cmd.omega_ = rm_cmd.omega_;    
         }
 
-        debug_dt = DWT_GetDeltaT(&debug_DWT_CNT);
-        all_time = all_time + debug_dt;
+        // debug_dt = DWT_GetDeltaT(&debug_DWT_CNT);
+        // all_time = all_time + debug_dt;
 
-        // // DJI3508_w_rad_aim = M_PI - M_PI*cosf(all_time*3.0f);
-        // DJI3508_w_rad_return = arm3508_motor.getCurrentSpeed();
-        // DJI3508_current = PID_Calculate(&DJI3508_SpeedPid, DJI3508_w_rad_return , DJI3508_w_rad_aim);
-        // arm3508_motor.setMotorCmd(DJI3508_current);
+        // // arm3508_Axis.setAxisSpeed_rad_s(DJI3508_w_rad_aim);
+        // EncoderSumPos_rad = Encoder_1.getSumPos_rad();
 
+        // // SteerPos_Deg_traget = M_PI*cosf(all_time*3.0f)*kRadToDeg;
+        // if(rm_cmd.linear_y_ == 0 && rm_cmd.linear_x_ == 0 ){
+        //     SteerPos_Deg_traget = SteerPos_Deg_traget_last;
+        // }else{
+        //     SteerPos_Deg_traget = atan2(rm_cmd.linear_y_, rm_cmd.linear_x_) / kDegToRad;
+        // }
+        // SteerPos_Deg_traget_last = SteerPos_Deg_traget;
+        // SwerveSteer1.setAxisPos_rad(SteerPos_Deg_traget*kDegToRad,Encoder_1.getSumPos_rad());
+        // SteerPos_Deg_actual = SwerveSteer1.getAxisSinglePos_rad()*kRadToDeg;
+        // // SwerveSteer1.setAxisSpeed_rad_s(-2.0f*M_PI);
+        // // DJI2006_motor1.setMotorCmd(1000.0f);
 
-        arm3508_Axis.setAxisPos_rad(DJI3508_pos_deg_aim*kDegToRad);
-        // arm3508_Axis.setAxisSpeed_rad_s(DJI3508_w_rad_aim);
-        EncoderSumPos_rad = Encoder_1.getSumPos_rad();
+        // Speed2006 = DJI2006_motor1.getCurrentSpeed();
+        // Cmd2006 = DJI2006_motor1.cmdTrans();
 
-        // SteerPos_Deg_traget = M_PI*cosf(all_time*3.0f)*kRadToDeg;
-        if(rm_cmd.linear_y_ == 0 && rm_cmd.linear_x_ == 0 ){
-            SteerPos_Deg_traget = SteerPos_Deg_traget_last;
-        }else{
-            SteerPos_Deg_traget = atan2(rm_cmd.linear_y_, rm_cmd.linear_x_) / kDegToRad;
-        }
-        SteerPos_Deg_traget_last = SteerPos_Deg_traget;
-        SwerveSteer1.setAxisPos_rad(SteerPos_Deg_traget*kDegToRad,Encoder_1.getSumPos_rad());
-        SteerPos_Deg_actual = SwerveSteer1.getAxisSinglePos_rad()*kRadToDeg;
-        // SwerveSteer1.setAxisSpeed_rad_s(-2.0f*M_PI);
-        // DJI2006_motor1.setMotorCmd(1000.0f);
-
-        Speed2006 = DJI2006_motor1.getCurrentSpeed();
-        Cmd2006 = DJI2006_motor1.cmdTrans();
-
-        SwerveDrive3.setAxisSpeed_rad_s(JoyToVelocity(control_rm_cmd.joyRVert, kJoyDeadZoneLeft, 10*M_PI));
-        // U8_controller3.MotorCurrentCtrl(JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, 2000.0f));
-        watch[0] = U8_controller3.getMotorSpeed_rad();
-        // U8_motor3.setMotorCtrl(U8_3_erpm, VESCMotor::VESC_MODE::SET_ERPM);
+        // SwerveDrive3.setAxisSpeed_rad_s(JoyToVelocity(control_rm_cmd.joyRVert, kJoyDeadZoneLeft, 10*M_PI));
+        // // U8_controller3.MotorCurrentCtrl(JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, 2000.0f));
+        // watch[0] = U8_controller3.getMotorSpeed_rad();
+        // // U8_motor3.setMotorCtrl(U8_3_erpm, VESCMotor::VESC_MODE::SET_ERPM);
 
         chassis_data_pub.Publish(robot_v_aim_cmd);
 

@@ -81,8 +81,34 @@ public:
         pid.Improve = param.improve;
         PID_Init(&pid);
     }
-    void applySpeedParam(const PlanParam &plan_param){
-        plan_ = plan_param;
+    void applyPlanParam(const PlanParam &plan_param){
+        plan_param_ = plan_param;
+    }
+
+    float UpdatePlanSpeed(float delat){
+        float w_Acc = fabs(pos_output_) + plan_param_.Acc*dt;
+        float w_Dec = sqrt(2.0f*plan_param_.Dec*fabs(delat));
+        float plan_pos_output_tmp;
+        if(pos_pid_.MaxOut < w_Acc && pos_pid_.MaxOut < w_Dec){
+            plan_pos_output_tmp = pos_pid_.MaxOut;
+        }else if(w_Acc > w_Dec){
+            plan_pos_output_tmp = w_Dec;
+        }else {
+            plan_pos_output_tmp = w_Acc;
+        };
+        return plan_pos_output_tmp*sign(delat);
+    };
+
+    float UpdatePlanK(float delat){
+        float K_tmp;
+        if(fabs(delat) > plan_param_.MixBegin){
+            K_tmp = 1.0f;
+        }else if(fabs(delat) <= plan_param_.MixBegin && fabs(delat) > plan_param_.MixEnd){
+            K_tmp = (fabs(delat)-(plan_param_.MixEnd))/((plan_param_.MixBegin)-(plan_param_.MixEnd));
+        }else if(fabs(delat) <= plan_param_.MixEnd){
+            K_tmp = 0.0f;
+        }
+        return K_tmp;
     }
 
     float watch[10] = {0};
@@ -100,12 +126,19 @@ public:
     uint32_t DWT_CNT;
 
     Control_Improvement Improvement_{Control_Improvement::NONE};
-    PlanParam plan_;
+    PlanParam plan_param_;
 };
 
 class DJIMotorController : public MotorControllerBase{
 public:
     explicit DJIMotorController(MotorBase& motor) : motor_(motor) {}
+
+    void init(const PlanParam &plan_param, const PidParam &speed_param, const PidParam &pos_param, const Control_Improvement &improvement){
+        applyPlanParam(plan_param);
+        ConfigSpeedPid(speed_param);
+        ConfigPosPid(pos_param);
+        ConfigControlImprovement(improvement);
+    }
 
     void MotorCurrentCtrl(float Current) override {
         motor_.setMotorCmd(Current);
@@ -150,38 +183,12 @@ public:
                 actual_sum_pos, // 输出轴角度(rad)
                 traget_sum_pos);
                 plan_pos_output_ = UpdatePlanSpeed(delat);
-                plan_.kPlan2Pid = UpdatePlanK(delat);
-                pos_output_ = plan_pos_output_*plan_.kPlan2Pid + pid_sum_pos_output_*(1-plan_.kPlan2Pid);
+                plan_param_.kPlan2Pid = UpdatePlanK(delat);
+                pos_output_ = plan_pos_output_*plan_param_.kPlan2Pid + pid_sum_pos_output_*(1-plan_param_.kPlan2Pid);
                 break;
         }
 
         MotorSpeedCtrl_rad_s(pos_output_);
-    }
-
-    float UpdatePlanSpeed(float delat){
-        float w_Acc = fabs(pos_output_) + plan_.Acc*dt;
-        float w_Dec = sqrt(2.0f*plan_.Dec*fabs(delat));
-        float plan_pos_output_tmp;
-        if(pos_pid_.MaxOut < w_Acc && pos_pid_.MaxOut < w_Dec){
-            plan_pos_output_tmp = pos_pid_.MaxOut;
-        }else if(w_Acc > w_Dec){
-            plan_pos_output_tmp = w_Dec;
-        }else {
-            plan_pos_output_tmp = w_Acc;
-        };
-        return plan_pos_output_tmp*sign(delat);
-    };
-
-    float UpdatePlanK(float delat){
-        float K_tmp;
-        if(fabs(delat) > plan_.MixBegin){
-            K_tmp = 1.0f;
-        }else if(fabs(delat) < plan_.MixBegin && fabs(delat) > plan_.MixEnd){
-            K_tmp = (fabs(delat)-(plan_.MixEnd))/((plan_.MixBegin)-(plan_.MixEnd));
-        }else if(fabs(delat) < plan_.MixEnd){
-            K_tmp = 0.0f;
-        }
-        return K_tmp;
     }
 
     float getMotorSpeed_rad(void) override { return motor_.getCurrentSpeed(); }

@@ -207,57 +207,21 @@ public:
               wheel_position_m(wheel_position) {}
     };
 
-    struct PidParam {
-        float kp;
-        float ki;
-        float kd;
-        float max_out;
-        float deadband;
-        uint16_t improve;
-
-        PidParam(float kp_in = 100.0f, float ki_in = 80.0f,
-                      float kd_in = 0.0f, float max_out_in = 20000.0f,
-                      float deadband_in = 0.3f, uint16_t improve_in = NONE)
-            : kp(kp_in), ki(ki_in), kd(kd_in), max_out(max_out_in),
-              deadband(deadband_in), improve(improve_in) {}
-    };
-
     // 轮序固定为 [左上, 右上, 左下, 右下]
     SwerveChassis4(RotaryAxis &DriveMotor_1, RotaryAxis &DriveMotor_2, RotaryAxis &DriveMotor_3, RotaryAxis &DriveMotor_4,
                    RotaryAxis &SteerMotor_1, RotaryAxis &SteerMotor_2, RotaryAxis &SteerMotor_3, RotaryAxis &SteerMotor_4,
-                   BRT38B     &Encoder_1,    BRT38B     &Encoder_2,    BRT38B     &Encoder_3,    BRT38B     &Encoder_4,
-                const std::array<PidParam, kWheelCount> &pid_params)
-                // const std::array<Geometry, kWheelCount> &Geometries)
+                   BRT38B     &Encoder_1,    BRT38B     &Encoder_2,    BRT38B     &Encoder_3,    BRT38B     &Encoder_4)
         : DriveMotors_{&DriveMotor_1, &DriveMotor_2, &DriveMotor_3, &DriveMotor_4},
           SteerMotors_{&SteerMotor_1, &SteerMotor_2, &SteerMotor_3, &SteerMotor_4},
           Encoders_{&Encoder_1, &Encoder_2, &Encoder_3, &Encoder_4}
-        //   geometry_(geometry) {
         {
         setWheelDirectionSign({SwerveDirection::kPositive, SwerveDirection::kPositive, SwerveDirection::kPositive, SwerveDirection::kPositive});
-        configureSpeedPid(pid_params);
     }
 
-    // void configureGeometry(const Geometry &geometry) { geometry_ = geometry; }
-
-    void configureSteerPid(const std::array<PidParam, kWheelCount> &params) {
-        for (size_t i = 0; i < steer_pid_.size(); ++i) {
-            applyPidParam(steer_pid_[i], params[i]);
-        }
-    }
-    void configureSpeedPid(const std::array<PidParam, kWheelCount> &params) {
-        for (size_t i = 0; i < speed_pid_.size(); ++i) {
-            applyPidParam(speed_pid_[i], params[i]);
-        }
-    }
     void configureGeometries(const std::array<Geometry, kWheelCount> &Geometries) {
         for (size_t i = 0; i < Geometries_.size(); ++i) {
             Geometries_[i] = Geometries[i];
         }
-    }
-
-    void configureSingleWheelSpeedPid(WheelIndex wheel,
-                                      const PidParam &param) {
-        applyPidParam(speed_pid_[wheel], param);
     }
 
     void setWheelDirectionSign(const std::array<SwerveDirection, 4> &direction_sign) {
@@ -277,22 +241,25 @@ public:
 
             const float mps_to_rad_s =  2.0f / Geometries_[i].wheel_diameter_m;
             target_speed_rad_s_[i]  = sqrtf(Swerve_speed.x*Swerve_speed.x + Swerve_speed.y*Swerve_speed.y)*mps_to_rad_s;
-            target_speed_rad_s_[i] *= direction_sign_[i];
             target_raw_steer_rad[i] = atan2f(Swerve_speed.y, Swerve_speed.x);
 
-            if(abs(target_raw_steer_rad[i] - target_raw_steer_rad_last[i]) > M_PI_2){
-                // target_steer_motor_rad[i] = Warp_ToRange(target_raw_steer_rad[i] + M_PI, -M_PI, M_PI);
-                if(direction_sign_[i] == SwerveDirection::kPositive){
-                    direction_sign_[i] = SwerveDirection::kNegative;
-                }else if(direction_sign_[i] == SwerveDirection::kNegative){
-                    direction_sign_[i] = SwerveDirection::kPositive;
+            SteerMotors_[i]->UpdateAxisPos(Encoders_[i]->getSumPos_rad());
+            const float angle_offset = (direction_sign_[i] == SwerveDirection::kNegative)?M_PI:0.0f;
+            actual_steer_motor_rad[i] = Warp_ToRange(SteerMotors_[i]->getAxisSinglePos_rad() + angle_offset, -M_PI, M_PI);
+            if( Swerve_speed.x == 0.0f && Swerve_speed.y == 0.0f){
+                target_raw_steer_rad[i] = target_raw_steer_rad_last[i];
+            }else{
+                if(abs(Warp_ToRange(target_raw_steer_rad[i] - actual_steer_motor_rad[i], -M_PI, M_PI)) > M_PI_2){
+                    direction_sign_[i] = (direction_sign_[i] == SwerveDirection::kNegative) ? SwerveDirection::kPositive : SwerveDirection::kNegative;
                 }
+                const float angle_offset = (direction_sign_[i] == SwerveDirection::kNegative)?M_PI:0.0f;
+                target_steer_motor_rad[i] = Warp_ToRange(target_raw_steer_rad[i] + angle_offset, -M_PI, M_PI);
             }
-            if(direction_sign_[i] == SwerveDirection::kNegative){
-                target_steer_motor_rad[i] = Warp_ToRange(target_raw_steer_rad[i] + M_PI, -M_PI, M_PI);
-            }else if(direction_sign_[i] == SwerveDirection::kPositive){
-                target_steer_motor_rad[i] = Warp_ToRange(target_raw_steer_rad[i], -M_PI, M_PI);
-            }
+            float steer_error = Warp_ToRange(target_steer_motor_rad[i] - SteerMotors_[i]->getAxisSinglePos_rad(), -M_PI, M_PI);
+            float scale = fmaxf(0.0f, cosf(steer_error));
+            target_speed_rad_s_[i] *= direction_sign_[i]*scale;
+
+            target_raw_steer_rad_last[i] = target_raw_steer_rad[i];
         }
     }
 
@@ -307,8 +274,6 @@ public:
     }
 
     const std::array<float, 4> &targetRADPerSec() const { return target_speed_rad_s_; }
-    const std::array<float, 4> &pidOutput() const { return pid_speed_output_; }
-    const PID_t &pid(WheelIndex wheel) const { return speed_pid_[wheel]; }
 
 private:
     static constexpr float kPi = 3.14159265358979323846f;
@@ -329,12 +294,9 @@ private:
     std::array<BRT38B *, 4> Encoders_{};
     std::array<Geometry, kWheelCount> Geometries_{};
     std::array<SwerveDirection, kWheelCount> direction_sign_{};
-    std::array<PID_t, kWheelCount> speed_pid_{};
-    std::array<PID_t, kWheelCount> steer_pid_{};
     std::array<float, kWheelCount> target_speed_rad_s_{};
     std::array<float, kWheelCount> target_raw_steer_rad{};
     std::array<float, kWheelCount> target_raw_steer_rad_last{};
     std::array<float, kWheelCount> target_steer_motor_rad{};
-    std::array<float, kWheelCount> pid_speed_output_{};
-    std::array<float, kWheelCount> pid_steer_output_{};
+    std::array<float, kWheelCount> actual_steer_motor_rad{};
 };

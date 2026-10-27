@@ -8,7 +8,7 @@
 #include "tool.hpp"
 
 inline constexpr uint16_t kJoyCenter = 985;
-inline constexpr uint16_t kJoyDeadZoneLeft = 600;
+inline constexpr uint16_t kJoyDeadZoneLeft = 100;
 inline constexpr uint16_t kJoyDeadZoneRight = 100;
 
 constexpr uint8_t CRSF_SYNC_BYTE = 0xC8;
