@@ -17,6 +17,7 @@
 #include "pid_controller.hpp"
 #include "chassis_task.h"
 #include "rm_pocket.hpp"
+#include "stm32h723xx.h"
 #include "tool.hpp"
 #include "topic_pool.h"
 #include "topics.hpp"
@@ -81,6 +82,9 @@ float DJI3508_pos_deg_aim = 0;
 float_t all_time = 0;
 float_t debug_dt;
 uint32_t debug_DWT_CNT;
+CanBus::ClassicPack debug_pack;
+bool button = false;
+extern CanBus fdcan2_bus;
 
 float watch[10];
 //debug end
@@ -124,6 +128,7 @@ void controlTask(void *argument) {
     
     controlInit();
     // uint32_t last_time = HAL_GetTick();
+    U8_controller3.setSpeedPidMode(VESCMotorController::VESC_SpeedControlMode::kLocalPid);
 
     for (;;) {
         // static float controlTask_dt = 0.0f;
@@ -153,31 +158,39 @@ void controlTask(void *argument) {
             robot_v_aim_cmd.omega_ = rm_cmd.omega_;    
         }
 
-        // debug_dt = DWT_GetDeltaT(&debug_DWT_CNT);
-        // all_time = all_time + debug_dt;
+        {   
+            /////////////////debug begin///////////////////////
+            // debug_dt = DWT_GetDeltaT(&debug_DWT_CNT);
+            // all_time = all_time + debug_dt;
 
-        // // arm3508_Axis.setAxisSpeed_rad_s(DJI3508_w_rad_aim);
-        // EncoderSumPos_rad = Encoder_1.getSumPos_rad();
+            // // arm3508_Axis.setAxisSpeed_rad_s(DJI3508_w_rad_aim);
+            // EncoderSumPos_rad = Encoder_1.getSumPos_rad();
 
-        // // SteerPos_Deg_traget = M_PI*cosf(all_time*3.0f)*kRadToDeg;
-        // if(rm_cmd.linear_y_ == 0 && rm_cmd.linear_x_ == 0 ){
-        //     SteerPos_Deg_traget = SteerPos_Deg_traget_last;
-        // }else{
-        //     SteerPos_Deg_traget = atan2(rm_cmd.linear_y_, rm_cmd.linear_x_) / kDegToRad;
-        // }
-        // SteerPos_Deg_traget_last = SteerPos_Deg_traget;
-        // SwerveSteer1.setAxisPos_rad(SteerPos_Deg_traget*kDegToRad,Encoder_1.getSumPos_rad());
-        // SteerPos_Deg_actual = SwerveSteer1.getAxisSinglePos_rad()*kRadToDeg;
-        // // SwerveSteer1.setAxisSpeed_rad_s(-2.0f*M_PI);
-        // // DJI2006_motor1.setMotorCmd(1000.0f);
+            // // SteerPos_Deg_traget = M_PI*cosf(all_time*3.0f)*kRadToDeg;
+            // if(rm_cmd.linear_y_ == 0 && rm_cmd.linear_x_ == 0 ){
+            //     SteerPos_Deg_traget = SteerPos_Deg_traget_last;
+            // }else{
+            //     SteerPos_Deg_traget = atan2(rm_cmd.linear_y_, rm_cmd.linear_x_) / kDegToRad;
+            // }
+            // SteerPos_Deg_traget_last = SteerPos_Deg_traget;
+            // SwerveSteer1.setAxisPos_rad(SteerPos_Deg_traget*kDegToRad,Encoder_1.getSumPos_rad());
+            // SteerPos_Deg_actual = SwerveSteer1.getAxisSinglePos_rad()*kRadToDeg;
+            // // SwerveSteer1.setAxisSpeed_rad_s(-2.0f*M_PI);
+            // // DJI2006_motor1.setMotorCmd(1000.0f);
 
-        // Speed2006 = DJI2006_motor1.getCurrentSpeed();
-        // Cmd2006 = DJI2006_motor1.cmdTrans();
+            // Speed2006 = DJI2006_motor1.getCurrentSpeed();
+            // Cmd2006 = DJI2006_motor1.cmdTrans();
 
-        // SwerveDrive3.setAxisSpeed_rad_s(JoyToVelocity(control_rm_cmd.joyRVert, kJoyDeadZoneLeft, 10*M_PI));
-        // // U8_controller3.MotorCurrentCtrl(JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, 2000.0f));
-        // watch[0] = U8_controller3.getMotorSpeed_rad();
-        // // U8_motor3.setMotorCtrl(U8_3_erpm, VESCMotor::VESC_MODE::SET_ERPM);
+            // SwerveDrive3.setAxisSpeed_rad_s(JoyToVelocity(control_rm_cmd.joyRVert, kJoyDeadZoneLeft, 10*M_PI));
+            // U8_controller3.MotorCurrentCtrl(JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, 2000.0f));
+            watch[0] = U8_controller3.getMotorSpeed_rad();
+            // // U8_motor3.setMotorCtrl(U8_3_erpm, VESCMotor::VESC_MODE::SET_ERPM);
+            if(button){
+                fdcan2_bus.addCanMsg(debug_pack);
+                button = !button;
+            }
+            /////////////////debug end///////////////////////
+        }
 
         chassis_data_pub.Publish(robot_v_aim_cmd);
 

@@ -243,7 +243,8 @@ public:
             target_speed_rad_s_[i]  = sqrtf(Swerve_speed.x*Swerve_speed.x + Swerve_speed.y*Swerve_speed.y)*mps_to_rad_s;
             target_raw_steer_rad[i] = atan2f(Swerve_speed.y, Swerve_speed.x);
 
-            SteerMotors_[i]->UpdateAxisPos(Encoders_[i]->getSumPos_rad());
+            // SteerMotors_[i]->UpdateAxisPos(Encoders_[i]->getSumPos_rad());
+            SteerMotors_[i]->UpdateAxisPos();
             const float angle_offset = (direction_sign_[i] == SwerveDirection::kNegative)?M_PI:0.0f;
             actual_steer_motor_rad[i] = Warp_ToRange(SteerMotors_[i]->getAxisSinglePos_rad() + angle_offset, -M_PI, M_PI);
             if( Swerve_speed.x == 0.0f && Swerve_speed.y == 0.0f){
@@ -256,6 +257,7 @@ public:
                 target_steer_motor_rad[i] = Warp_ToRange(target_raw_steer_rad[i] + angle_offset, -M_PI, M_PI);
             }
             float steer_error = Warp_ToRange(target_steer_motor_rad[i] - SteerMotors_[i]->getAxisSinglePos_rad(), -M_PI, M_PI);
+            watch[i] = steer_error;
             float scale = fmaxf(0.0f, cosf(steer_error));
             target_speed_rad_s_[i] *= direction_sign_[i]*scale;
 
@@ -269,11 +271,14 @@ public:
         for (size_t i = 0; i < kWheelCount; ++i) {
             float DriveSpeed_In = target_speed_rad_s_[i] + SteerMotors_[i]->getAxisSpeed_rad()/DriveMotors_[i]->getMotorPerOutput();
             DriveMotors_[i]->setAxisSpeed_rad_s(DriveSpeed_In);
-            SteerMotors_[i]->setAxisPos_rad(target_steer_motor_rad[i],Encoders_[i]->getSumPos_rad());
+            SteerMotors_[i]->setAxisPos_rad(target_steer_motor_rad[i]);
+            // SteerMotors_[i]->setAxisPos_rad(target_steer_motor_rad[i],Encoders_[i]->getSumPos_rad());
         }
     }
 
     const std::array<float, 4> &targetRADPerSec() const { return target_speed_rad_s_; }
+
+    float watch[10];
 
 private:
     static constexpr float kPi = 3.14159265358979323846f;

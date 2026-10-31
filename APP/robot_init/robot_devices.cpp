@@ -42,19 +42,19 @@ VESCMotorController U8_controller1(U8_motor1);
 VESCMotorController U8_controller2(U8_motor2);
 VESCMotorController U8_controller3(U8_motor3);
 VESCMotorController U8_controller4(U8_motor4);
-DJIMotorController DJI2006_controller1(DJI2006_motor1);
-DJIMotorController DJI2006_controller2(DJI2006_motor2);
-DJIMotorController DJI2006_controller3(DJI2006_motor3);
-DJIMotorController DJI2006_controller4(DJI2006_motor4);
+DJIMotorController DJI2006_controller1(DJI2006_motor1,Encoder_1,-28.0f/19.0f);
+DJIMotorController DJI2006_controller2(DJI2006_motor2,Encoder_2,-28.0f/19.0f);
+DJIMotorController DJI2006_controller3(DJI2006_motor3,Encoder_3,-28.0f/19.0f);
+DJIMotorController DJI2006_controller4(DJI2006_motor4,Encoder_4,-28.0f/19.0f);
 
 RotaryAxis SwerveDrive1(U8_controller1,4.0f);
 RotaryAxis SwerveDrive2(U8_controller2,4.0f);
 RotaryAxis SwerveDrive3(U8_controller3,4.0f);
 RotaryAxis SwerveDrive4(U8_controller4,4.0f);
-RotaryAxis SwerveSteer1(DJI2006_controller1,-112.0f/19.0f,4.0f);
-RotaryAxis SwerveSteer2(DJI2006_controller2,-112.0f/19.0f,4.0f);
-RotaryAxis SwerveSteer3(DJI2006_controller3,-112.0f/19.0f,4.0f);
-RotaryAxis SwerveSteer4(DJI2006_controller4,-112.0f/19.0f,4.0f);
+RotaryAxis SwerveSteer1(DJI2006_controller1,-112.0f/19.0f);
+RotaryAxis SwerveSteer2(DJI2006_controller2,-112.0f/19.0f);
+RotaryAxis SwerveSteer3(DJI2006_controller3,-112.0f/19.0f);
+RotaryAxis SwerveSteer4(DJI2006_controller4,-112.0f/19.0f);
 
 // 全向轮底盘设备
 C620Motor chassis_motor1(&fdcan3_bus, 0x201, 0, 0x200, 0);

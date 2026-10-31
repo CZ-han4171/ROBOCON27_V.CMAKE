@@ -326,7 +326,6 @@ void can2SendTask(void *argument) {
   TickType_t currentTime = xTaskGetTickCount();
   CanBus::ClassicPack pack;
   pack.type = CanBus::Type::STANDARD;
-
   uint8_t len = 8;
   const uint32_t arm_motor_ids[4] = {0x205, 0x206, 0x207, 0x208};
   for (;;) {

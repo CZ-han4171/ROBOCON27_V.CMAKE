@@ -26,9 +26,6 @@ public:
     explicit RotaryAxis(MotorControllerBase& MotorController, float motor_rad_per_output_rad)
         : MotorController_(MotorController), motor_rad_per_output_rad_(motor_rad_per_output_rad){}
 
-    explicit RotaryAxis(MotorControllerBase& MotorController, float motor_rad_per_output_rad, float encoder_rad_per_output_rad)
-        : MotorController_(MotorController), motor_rad_per_output_rad_(motor_rad_per_output_rad), encoder_rad_per_output_rad_(encoder_rad_per_output_rad){}
-
     enum class ForbiddenZoneMode {
         None,     // 不启用禁区
         Enabled   // 启用禁区
@@ -36,11 +33,6 @@ public:
 
     void UpdateAxisPos(){
         Axis_actual_sum_pos_ = MotorController_.getMotorSumPos_rad()/motor_rad_per_output_rad_;
-        Axis_actual_single_pos_ = Warp_ToRange(Axis_actual_sum_pos_, -M_PI, M_PI);
-    }
-
-    void UpdateAxisPos(float Encoder_sum_pos){
-        Axis_actual_sum_pos_ = Encoder_sum_pos/encoder_rad_per_output_rad_;
         Axis_actual_single_pos_ = Warp_ToRange(Axis_actual_sum_pos_, -M_PI, M_PI);
     }
 
@@ -63,26 +55,6 @@ public:
         MotorController_.MotorSumPosCtrl_rad(Motor_sum_pos);
     }
 
-    void setAxisPos_rad(float Axis_traget_single_pos, float Encoder_sum_pos){
-        float delat = 0.0f;
-        UpdateAxisPos(Encoder_sum_pos);
-        
-        Axis_traget_single_pos_ = Axis_traget_single_pos ;
-        if(isEnableForbidden_ == ForbiddenZoneMode::Enabled){
-            forbiddenPoint_ = Warp_ToRange(forbiddenPoint_, 0, 2*M_PI);
-            float Axis_traget_single_pos_forbidden = Warp_ToRange(Axis_traget_single_pos_ - forbiddenPoint_, 0, 2*M_PI);
-            float Axis_actual_single_pos_forbidden = Warp_ToRange(Axis_actual_single_pos_ - forbiddenPoint_, 0, 2*M_PI);
-            delat = Axis_traget_single_pos_forbidden - Axis_actual_single_pos_forbidden;
-        }else if(isEnableForbidden_ == ForbiddenZoneMode::None){
-            delat = Warp_ToRange(Axis_traget_single_pos - Axis_actual_single_pos_, -M_PI, M_PI);
-        }
-        
-        Axis_traget_sum_pos_ = Axis_actual_sum_pos_ + delat;
-        float Motor_traget_sum_pos = Axis_traget_sum_pos_*motor_rad_per_output_rad_;
-        float Motor_actual_sum_pos = Axis_actual_sum_pos_*motor_rad_per_output_rad_;
-        MotorController_.MotorSumPosCtrl_rad(Motor_traget_sum_pos,Motor_actual_sum_pos);
-    }
-
     void setAxisSpeed_rad_s(float Axis_speed){
         float Motor_speed = Axis_speed*motor_rad_per_output_rad_;
         MotorController_.MotorSpeedCtrl_rad_s(Motor_speed);
@@ -94,7 +66,7 @@ public:
     }
 
     float getMotorPerOutput(void){ return motor_rad_per_output_rad_; }
-    float getEncoderPerOutput(void){ return encoder_rad_per_output_rad_; }
+    // float getEncoderPerOutput(void){ return encoder_rad_per_output_rad_; }
     float getAxisSpeed_rad(void){ return MotorController_.getMotorSpeed_rad()/motor_rad_per_output_rad_; }
     float getAxisSumPos_rad(void){ return Axis_actual_sum_pos_; }
     float getAxisSinglePos_rad(void){ return Axis_actual_single_pos_; }
@@ -108,7 +80,6 @@ public:
 private:
     MotorControllerBase& MotorController_;
     float motor_rad_per_output_rad_ = 1.0f;
-    float encoder_rad_per_output_rad_ = 1.0f;
     float Axis_traget_single_pos_ = 0.0f;
     float Axis_actual_single_pos_ = 0.0f;
     float Axis_traget_sum_pos_ = 0.0f; 
@@ -126,11 +97,6 @@ public:
     void setAxisPos_meter(float Axis_pos){
         float Motor_pos = Axis_pos*motor_rad_per_output_meter_;
         MotorController_.MotorSumPosCtrl_rad(Motor_pos);
-    }
-    void setAxisPos_meter(float Axis_traget_pos, float Axis_actual_pos){
-        float Motor_traget_pos = Axis_traget_pos*motor_rad_per_output_meter_;
-        float Motor_actual_pos = Axis_actual_pos*motor_rad_per_output_meter_;
-        MotorController_.MotorSumPosCtrl_rad( Motor_traget_pos, Motor_actual_pos );
     }
     void setAxisSpeed_meter_s(float Axis_speed){
         float Motor_speed = Axis_speed*motor_rad_per_output_meter_;

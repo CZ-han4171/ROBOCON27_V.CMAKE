@@ -14,6 +14,7 @@
 #pragma once
 
 #include "Canbus.hpp"
+#include "Encoder.hpp"
 #include "main.h"
 #include <cmath>
 #include <cstdint>
@@ -24,14 +25,20 @@
 #include "pid_controller.hpp"
 #include "tool.hpp"
 #include "topic_pool.h"
+#include <functional>
 
 class MotorControllerBase {
 public:
     MotorControllerBase() = default;
 
-    enum Control_Improvement{
+    enum class Control_Improvement{
         NONE,
         SPEEDPLAN,
+    };
+
+    enum class FeedBackDirection{
+        kPositive,
+        kNegative,
     };
 
     struct PlanParam {
@@ -48,20 +55,23 @@ public:
     virtual void MotorCurrentCtrl(float current){};
     virtual void MotorSpeedCtrl_rad_s(float speed){};
     virtual void MotorSinglePosCtrl_rad(float single_pos){};
-    virtual void MotorSinglePosCtrl_rad(float traget_single_pos, float actual_single_pos){};
     virtual void MotorSumPosCtrl_rad(float sum_pos){};
-    virtual void MotorSumPosCtrl_rad(float traget_sum_pos, float actual_sum_pos){};
     virtual void MotorMitCtrl(float speed, float pos, float torque, float Kp, float Kd){};
     virtual void MotorPsiCtrl(float pos, float speed, float current){};
 
     virtual float getMotorSpeed_rad(void){ return 0; };
-    virtual float getMotorSumPos_rad(void){ return 0; };
-    virtual float getMotorSinglePos_rad(void){ return 0; };
+    float getMotorSumPos_rad(void){ return feedback_rad_per_motor_rad_*getFeedBackSumPos_rad(); };
+    float getMotorSinglePos_rad(void){ return Warp_ToRange(getMotorSumPos_rad(), -M_PI, M_PI); };
+
+    std::function<float()> getFeedBackSumPos_rad;
+    std::function<float()> getFeedBackSinglePos_rad;
+    void ConfigSumPosSource(std::function<float()> func){ getFeedBackSumPos_rad = func; }
+    void ConfigSinglePosSource(std::function<float()> func){ getFeedBackSinglePos_rad = func; }
+    void ConfigFeedBackRatio(float ratio){ feedback_rad_per_motor_rad_ = ratio; }
 
     void setMaxPosSpeed_rad_s(float MaxSpeed_rad_s){
         pos_pid_.MaxOut = MaxSpeed_rad_s;
     }
-
     void ConfigControlImprovement(const Control_Improvement &Improvement){
         Improvement_ = Improvement;
     }
@@ -113,6 +123,8 @@ public:
 
     float watch[10] = {0};
 
+    float feedback_rad_per_motor_rad_ = 1.0f;
+
     float pid_speed_output_;
     float pid_single_pos_output_;
     float pid_sum_pos_output_;
@@ -131,7 +143,17 @@ public:
 
 class DJIMotorController : public MotorControllerBase{
 public:
-    explicit DJIMotorController(MotorBase& motor) : motor_(motor) {}
+    explicit DJIMotorController(MotorBase& motor) : motor_(motor) {
+        // getFeedBackSpeed_rad = [this]() -> float {return motor_.getCurrentSpeed();};
+        getFeedBackSumPos_rad = [this]() -> float {return motor_.getCurrentSumPos();};
+        getFeedBackSinglePos_rad = [this]() -> float {return motor_.getCurrentSinglePos();};
+    }
+    explicit DJIMotorController(MotorBase& motor, BRT38B& Encoder, float ratio) : motor_(motor) {
+        // getFeedBackSpeed_rad = [this]() -> float {return motor_.getCurrentSpeed();};
+        getFeedBackSumPos_rad = [&Encoder]() -> float {return Encoder.getSumPos_rad();};
+        getFeedBackSinglePos_rad = [&Encoder]() -> float {return Encoder.getSinglePos_rad();};
+        feedback_rad_per_motor_rad_ = ratio;
+    }
 
     void init(const PlanParam &plan_param, const PidParam &speed_param, const PidParam &pos_param, const Control_Improvement &improvement){
         applyPlanParam(plan_param);
@@ -147,53 +169,44 @@ public:
     void MotorSpeedCtrl_rad_s(float speed) override {
         pid_speed_output_ = PID_Calculate(
                 &speed_pid_,
-                motor_.getCurrentSpeed(), // 输出轴转速(rad/s)
+                getMotorSpeed_rad(), // 输出轴转速(rad/s)
                 speed);
         MotorCurrentCtrl(pid_speed_output_);
     }
 
     void MotorSinglePosCtrl_rad(float single_pos) override {
-        MotorSinglePosCtrl_rad(single_pos,motor_.getCurrentSinglePos());
+        float delat = Warp_ToRange(single_pos - getMotorSinglePos_rad(), -M_PI, M_PI);
+        MotorSumPosCtrl_rad(delat + getMotorSumPos_rad());
     }
 
     void MotorSumPosCtrl_rad(float sum_pos) override {
-        MotorSumPosCtrl_rad(sum_pos,motor_.getCurrentSumPos());
-    }
-
-    void MotorSinglePosCtrl_rad(float traget_single_pos, float actual_single_pos) override {
-        float delat = Warp_ToRange(traget_single_pos - actual_single_pos, -M_PI, M_PI);
-        MotorSumPosCtrl_rad(delat,0.0f);
-    }
-
-    void MotorSumPosCtrl_rad(float traget_sum_pos, float actual_sum_pos) override {
-        float delat = traget_sum_pos - actual_sum_pos;
-        watch[0] = delat;
+        float actual_sum_pos = getMotorSumPos_rad();
+        float delat = sum_pos - actual_sum_pos;
         dt = DWT_GetDeltaT(&DWT_CNT);
         switch(Improvement_) {
             case Control_Improvement::NONE:
                 pid_sum_pos_output_ = PID_Calculate(
                 &pos_pid_,
                 actual_sum_pos, // 输出轴角度(rad)
-                traget_sum_pos);
+                sum_pos);
                 pos_output_ = pid_sum_pos_output_;
                 break;
             case Control_Improvement::SPEEDPLAN:
                 pid_sum_pos_output_ = PID_Calculate(
                 &pos_pid_,
                 actual_sum_pos, // 输出轴角度(rad)
-                traget_sum_pos);
+                sum_pos);
                 plan_pos_output_ = UpdatePlanSpeed(delat);
                 plan_param_.kPlan2Pid = UpdatePlanK(delat);
                 pos_output_ = plan_pos_output_*plan_param_.kPlan2Pid + pid_sum_pos_output_*(1-plan_param_.kPlan2Pid);
                 break;
         }
-
         MotorSpeedCtrl_rad_s(pos_output_);
     }
 
-    float getMotorSpeed_rad(void) override { return motor_.getCurrentSpeed(); }
-    float getMotorSumPos_rad(void) override { return motor_.getCurrentSumPos(); }
-    float getMotorSinglePos_rad(void) override { return motor_.getCurrentSinglePos(); }
+    float getMotorSpeed_rad() override {
+        return motor_.getCurrentSpeed();
+    }
 
 private:
     MotorBase& motor_;
@@ -201,7 +214,10 @@ private:
 
 class DM4310MotorController : public MotorControllerBase{
 public:
-    explicit DM4310MotorController(DM4310Motor& motor) : motor_(motor) {}
+    explicit DM4310MotorController(DM4310Motor& motor) : motor_(motor) {
+        getFeedBackSumPos_rad = [this]() -> float {return motor_.getCurrentSumPos();};
+        getFeedBackSinglePos_rad = [this]() -> float {return motor_.getCurrentSinglePos();};
+    }
 
     void MotorSpeedCtrl_rad_s(float speed){
         motor_.speedControl(speed);
@@ -222,7 +238,10 @@ private:
 
 class VESCMotorController : public MotorControllerBase{
 public:
-    explicit VESCMotorController(VESCMotor& motor) : motor_(motor) {}
+    explicit VESCMotorController(VESCMotor& motor) : motor_(motor) {
+        getFeedBackSumPos_rad = [this]() -> float {return motor_.getCurrentSumPos();};
+        getFeedBackSinglePos_rad = [this]() -> float {return motor_.getCurrentSinglePos();};
+    }
     
     enum VESC_SpeedControlMode {
         kVescPid,
@@ -237,7 +256,7 @@ public:
         if(speed_control_mode_ == VESC_SpeedControlMode::kLocalPid){
             pid_speed_output_ = PID_Calculate(
                 &speed_pid_,
-                motor_.getCurrentSpeed(), // 输出轴转速(rad/s)
+                getMotorSpeed_rad(), // 输出轴转速(rad/s)
                 target_speed_rad_s);
             MotorCurrentCtrl(pid_speed_output_);
         }else if(speed_control_mode_ == VESC_SpeedControlMode::kVescPid){
@@ -245,19 +264,16 @@ public:
         }
     }
 
-    void MotorSinglePosCtrl_rad(float traget_single_pos, float actual_single_pos) override {
-        pid_single_pos_output_ = PID_Calculate(
-                &pos_pid_,
-                actual_single_pos, // 输出轴角度(rad)
-                traget_single_pos);
-        MotorSpeedCtrl_rad_s(pid_single_pos_output_);
+    void MotorSinglePosCtrl_rad(float single_pos) override {
+        float delat = Warp_ToRange(single_pos - getMotorSinglePos_rad(), -M_PI, M_PI);
+        MotorSumPosCtrl_rad(delat + getMotorSumPos_rad());
     }
 
-    void MotorSumPosCtrl_rad(float traget_sum_pos, float actual_sum_pos) override {
+    void MotorSumPosCtrl_rad(float sum_pos) override {
         pid_sum_pos_output_ = PID_Calculate(
                 &pos_pid_,
-                actual_sum_pos, // 输出轴角度(rad)
-                traget_sum_pos);
+                getMotorSumPos_rad(), // 输出轴角度(rad)
+                sum_pos);
         MotorSpeedCtrl_rad_s(pid_sum_pos_output_);
     }
 
@@ -265,11 +281,12 @@ public:
         speed_control_mode_ = mode;
     }
 
-    float getMotorSpeed_rad(void){ return motor_.getCurrentSpeed(); }
-
+    float getMotorSpeed_rad() override {
+        return motor_.getCurrentSpeed();
+    }
 
 private:
     VESCMotor& motor_;
-    VESC_SpeedControlMode speed_control_mode_ = VESC_SpeedControlMode::kLocalPid;
+    VESC_SpeedControlMode speed_control_mode_ = VESC_SpeedControlMode::kVescPid;
 
 };

@@ -27,7 +27,10 @@ PidParam M2006_P38_SpeedPid(3000.0f, 16600.0f, 0.0f, 10000.0f, 0.0f, IMCREATEMEN
 PidParam M2006_P38_PosPid(3.0f,0.4f,0.01f,5*M_PI,0.5f*kDegToRad,NONE);
 PidParam M3508_P19_SpeedPid(4000.0f, 8600.0f, 0.0f, 16000.0f, 0.0f, IMCREATEMENT_OF_OUT);
 PidParam M3508_P19_PosPid(3.0f,0.4f,0.01f,2*M_PI,0.5f*kDegToRad,NONE);
-PidParam U8Lite_SpeedPid(1000.0f,3000.0f,0.0f,30000.0f,0.0f,IMCREATEMENT_OF_OUT);
+// PidParam U8Lite_SpeedPid(0.0f,3000.0f,0.0f,30000.0f,0.0f,IMCREATEMENT_OF_OUT);
+// PidParam U8Lite_SpeedPid(500.0f,1.0f,0.0f,30000.0f,0.0f,NONE);
+PidParam U8Lite_SpeedPid(100.0f,200.0f,0.0f,30000.0f,0.0f,IMCREATEMENT_OF_OUT);
+
 
 MotorControllerBase::PlanParam SwerveSteer_M2006_PlanParam(100.0f*M_PI,100.0f*M_PI,M_PI/18.0f,0.0f);
 PidParam SwerveSteer_M2006_SpeedPid(3000.0f, 16600.0f, 0.0f, 10000.0f, 0.0f, IMCREATEMENT_OF_OUT);
@@ -65,9 +68,11 @@ void RobotDevices_Init() {
     U8_controller3.ConfigSpeedPid(U8Lite_SpeedPid);
     U8_controller4.ConfigSpeedPid(U8Lite_SpeedPid);
 
-    DJI2006_controller1.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, MotorControllerBase::SPEEDPLAN);
-    DJI2006_controller2.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, MotorControllerBase::SPEEDPLAN);
-    DJI2006_controller3.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, MotorControllerBase::SPEEDPLAN);
-    DJI2006_controller4.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, MotorControllerBase::SPEEDPLAN);
+    DJI2006_controller1.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, MotorControllerBase::Control_Improvement::SPEEDPLAN);
+    DJI2006_controller2.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, MotorControllerBase::Control_Improvement::SPEEDPLAN);
+    DJI2006_controller3.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, MotorControllerBase::Control_Improvement::SPEEDPLAN);
+    DJI2006_controller4.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, MotorControllerBase::Control_Improvement::SPEEDPLAN);
+
+    // DJI2006_controller1.Con
 
 }
