@@ -21,7 +21,7 @@ extern "C"{
 #endif
 
 /*----------------------------------include-----------------------------------*/
-#include "pid_controller.h"
+#include "pid_controller.hpp"
 
 /*-----------------------------------macro------------------------------------*/
 #define ANGLE_LIMIT(val,min,max) \

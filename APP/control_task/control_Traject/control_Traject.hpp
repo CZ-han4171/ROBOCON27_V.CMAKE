@@ -1,6 +1,6 @@
 #include "main.h"
 #include "control_task.h"
-#include "pid_controller.h"
+#include "pid_controller.hpp"
 #include "chassis_task.h"
 #include "topic_pool.h"
 #include "topics.hpp"

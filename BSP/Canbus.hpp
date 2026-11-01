@@ -93,6 +93,7 @@ public:
     uint32_t id;
     Type type;
     uint8_t data[8];
+    uint32_t DLC{8};
   } ClassicPack;
 
   CanBus(FDCAN_HandleTypeDef &impl) : impl_(impl) {}
@@ -130,8 +131,9 @@ private:
   // 总共有3个fdcan
   static CanBus *map[3];
 
-  // can总线最多挂6个设备
-  CanDevice *device_[6];
+  // can总线最多挂12个设备
+  static constexpr uint8_t kMaxDevices = 12;
+  CanDevice *device_[kMaxDevices];
 
   uint32_t txMailbox;
 };

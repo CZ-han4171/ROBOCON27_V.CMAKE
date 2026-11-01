@@ -190,7 +190,7 @@ uint8_t CanBus::init(void) {
   }
 
   map[idx] = this;
-  for (uint8_t i = 0; i < 6; ++i) {
+  for (uint8_t i = 0; i < kMaxDevices; ++i) {
     device_[i] = nullptr;
   }
   txMailbox = 0;
@@ -203,13 +203,13 @@ uint8_t CanBus::registerDevice(CanDevice *device) {
     return 1;
   }
 
-  for (uint8_t i = 0; i < 6; ++i) {
+  for (uint8_t i = 0; i < kMaxDevices; ++i) {
     if (device_[i] == device) {
       return 0;
     }
   }
 
-  for (uint8_t i = 0; i < 6; ++i) {
+  for (uint8_t i = 0; i < kMaxDevices; ++i) {
     if (device_[i] == nullptr) {
       device_[i] = device;
       return 0;
@@ -239,7 +239,7 @@ void CanBus::processRxInterrupt(uint32_t fifo) {
 
   // 拿到can数据段长度
   const uint8_t len = dlcToBytes(rx_header.DataLength);
-  for (uint8_t i = 0; i < 6; ++i) {
+  for (uint8_t i = 0; i < kMaxDevices; ++i) {
     if (device_[i] == nullptr) {
       continue;
     }
@@ -282,7 +282,8 @@ void CanBus::txService() {
       tx_header.IdType =
           (pack.type == Type::EXTENDED) ? FDCAN_EXTENDED_ID : FDCAN_STANDARD_ID;
       tx_header.TxFrameType = FDCAN_DATA_FRAME;
-      tx_header.DataLength = FDCAN_DLC_BYTES_8;
+      // tx_header.DataLength = FDCAN_DLC_BYTES_8;
+      tx_header.DataLength = pack.DLC;
       tx_header.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
       tx_header.BitRateSwitch = FDCAN_BRS_OFF;
       tx_header.FDFormat = FDCAN_CLASSIC_CAN;
