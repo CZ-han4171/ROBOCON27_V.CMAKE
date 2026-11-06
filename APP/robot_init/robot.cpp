@@ -34,7 +34,6 @@ void Robot_Init() {
     Error_Handler();
   }
 
-
   /* freertos任务调度初始化 */
   osTaskInit();
 

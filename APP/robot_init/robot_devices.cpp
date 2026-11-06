@@ -64,8 +64,3 @@ C620Motor chassis_motor4(&fdcan3_bus, 0x204, 0, 0x200, 0);
 
 //上层电机
 DM4310Motor arm4310_motor(&fdcan2_bus, 0x301, 0, 0x01, 0,DM4310Motor::PosWithSpeed);
-
-// C620Motor arm3508_motor(&fdcan3_bus, 0x206, 0, 0x1FF, 0);
-// DJIMotorController arm3508_controller(arm3508_motor);
-// RotaryAxis arm3508_Axis(arm3508_controller, 1.0f);
-
