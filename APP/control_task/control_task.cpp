@@ -57,10 +57,10 @@ extern VESCMotor U8_motor3;
 float EncoderSumPos_rad = 0.0f;
 int32_t U8_3_erpm = 0;
 
-extern RotaryAxis SwerveSteer1;
-extern DJIMotorController DJI2006_controller1;
-extern C610Motor DJI2006_motor1;
-extern BRT38B Encoder_1;
+extern RotaryAxis SwerveSteer3;
+extern DJIMotorController DJI2006_controller3;
+extern C610Motor DJI2006_motor3;
+extern BRT38B Encoder_3;
 float Cmd2006 = 0.0f;
 float Speed2006 = 0.0f;
 float SteerPos_Deg_traget = 0.0f;
@@ -146,6 +146,7 @@ void controlTask(void *argument) {
         }
         control_rm_cmd_last = control_rm_cmd;
 
+
         {
             rm_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
             rm_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
@@ -173,12 +174,11 @@ void controlTask(void *argument) {
             //     SteerPos_Deg_traget = atan2(rm_cmd.linear_y_, rm_cmd.linear_x_) / kDegToRad;
             // }
             // SteerPos_Deg_traget_last = SteerPos_Deg_traget;
-            // SwerveSteer1.setAxisPos_rad(SteerPos_Deg_traget*kDegToRad,Encoder_1.getSumPos_rad());
-            // SteerPos_Deg_actual = SwerveSteer1.getAxisSinglePos_rad()*kRadToDeg;
+            // SwerveSteer3.setAxisPos_rad(SteerPos_Deg_traget*kDegToRad);
+            // SteerPos_Deg_actual = SwerveSteer3.getAxisSinglePos_rad()*kRadToDeg;
             // // SwerveSteer1.setAxisSpeed_rad_s(-2.0f*M_PI);
             // // DJI2006_motor1.setMotorCmd(1000.0f);
-
-            // Speed2006 = DJI2006_motor1.getCurrentSpeed();
+            // Speed2006 = DJI2006_motor3.getCurrentSpeed();
             // Cmd2006 = DJI2006_motor1.cmdTrans();
 
             // SwerveDrive3.setAxisSpeed_rad_s(JoyToVelocity(control_rm_cmd.joyRVert, kJoyDeadZoneLeft, 10*M_PI));
