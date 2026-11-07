@@ -8,6 +8,8 @@
  *
  * @attention :
  * @note : 只依赖 cstdint，不引 HAL，可以在纯算法环境里单独编译
+ *         实现方只负责"把一帧塞进硬件 / 从硬件取一帧"，
+ *         设备匹配、发送队列、ID 分发统一留在 CanBus 层
  * @versioninfo :
  */
 #pragma once
@@ -85,6 +87,15 @@ public:
 
   // 非阻塞接收，返回 false = 当前没有帧
   virtual bool recv(FdFrame &frame) = 0;
+
+  // 硬件还能塞几帧，0 = 这一轮别从队列出队（出队了也塞不进去）
+  virtual uint32_t txFreeLevel() = 0;
+
+  // 带通道号的接收：片上 FDCAN 分 FIFO0/FIFO1，SPI 只有一个 RX FIFO
+  virtual bool recvFrom(uint8_t channel, FdFrame &frame) {
+    (void)channel;
+    return recv(frame);
+  }
 
   // 中断上下文调用，只允许置标志这类极短动作
   virtual void onInterrupt() = 0;

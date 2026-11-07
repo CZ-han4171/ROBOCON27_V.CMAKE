@@ -16,32 +16,9 @@
 #include "stm32h7xx_hal_def.h"
 #include "stm32h7xx_hal_fdcan.h"
 #include <cstdint>
+#include <cstring>
 
 namespace {
-
-uint8_t dlcToBytes(uint32_t dlc) {
-  switch (dlc) {
-  case FDCAN_DLC_BYTES_0:
-    return 0;
-  case FDCAN_DLC_BYTES_1:
-    return 1;
-  case FDCAN_DLC_BYTES_2:
-    return 2;
-  case FDCAN_DLC_BYTES_3:
-    return 3;
-  case FDCAN_DLC_BYTES_4:
-    return 4;
-  case FDCAN_DLC_BYTES_5:
-    return 5;
-  case FDCAN_DLC_BYTES_6:
-    return 6;
-  case FDCAN_DLC_BYTES_7:
-    return 7;
-  case FDCAN_DLC_BYTES_8:
-  default:
-    return 8;
-  }
-}
 
 int8_t busIndexFromHandle(FDCAN_HandleTypeDef *hfdcan) {
   if (hfdcan == &hfdcan1) {
@@ -184,12 +161,16 @@ CanBus *CanBus::instanceByIndex(uint8_t idx) {
 }
 
 uint8_t CanBus::init(void) {
-  const int8_t idx = busIndexFromHandle(&impl_);
-  if (idx < 0) {
-    return 1;
+  // 只有片上 FDCAN 需要登记到 map，供 HAL 回调按句柄找回总线；
+  // SPI 外挂控制器没有 HAL 句柄，不参与中断路由
+  if (impl_ != nullptr) {
+    const int8_t idx = busIndexFromHandle(impl_);
+    if (idx < 0) {
+      return 1;
+    }
+    map[idx] = this;
   }
 
-  map[idx] = this;
   for (uint8_t i = 0; i < kMaxDevices; ++i) {
     device_[i] = nullptr;
   }
@@ -224,21 +205,57 @@ uint8_t CanBus::addCanMsg(const ClassicPack &pack) {
     return 1;
   }
 
-  txService();
+  if (tx_notify_ != nullptr) {
+    // 后端只能在它自己的任务里发帧（SPI 外挂控制器），交给任务去推
+    tx_notify_();
+  } else {
+    // 片上 FDCAN：入队后顺手试发一次
+    txService();
+  }
   return 0;
 }
 
-// 处理接收中断
+// 处理接收中断：只取一帧，剩下的靠中断再来或 pollRx() 兜底
 void CanBus::processRxInterrupt(uint32_t fifo) {
-  FDCAN_RxHeaderTypeDef rx_header = {0};
-  uint8_t data[8] = {0};
-
-  if (HAL_FDCAN_GetRxMessage(&impl_, fifo, &rx_header, data) != HAL_OK) {
+  BspCan::FdFrame frame;
+  // FDCAN_RX_FIFO0 = 0，FDCAN_RX_FIFO1 = 1
+  if (!backend_->recvFrom((fifo == FDCAN_RX_FIFO1) ? 1U : 0U, frame)) {
     return;
   }
+  dispatch(frame);
+}
 
-  // 拿到can数据段长度
-  const uint8_t len = dlcToBytes(rx_header.DataLength);
+// 主动搬一轮：SPI 后端没有中断里搬数据的条件，只能在任务里轮询
+void CanBus::pollRx() {
+  BspCan::FdFrame frame;
+  for (uint8_t i = 0; i < kMaxRxPerPoll; ++i) {
+    if (!backend_->recv(frame)) {
+      break;
+    }
+    dispatch(frame);
+  }
+}
+
+// 一帧收到后按 ID 分发给设备，FDCAN 和 SPI 走的是同一段代码
+void CanBus::dispatch(const BspCan::FdFrame &frame) {
+  // 设备回调只有 8 字节，FD 长帧先截断
+  const uint8_t len = (frame.len > 8U) ? 8U : frame.len;
+
+  last_rx_id_ = frame.id;
+  last_rx_len_ = len;
+  ++rx_frames_;
+
+  // 造一个 FDCAN 报文头，CanDevice::matchRx 的签名就不用动
+  FDCAN_RxHeaderTypeDef rx_header = {0};
+  rx_header.Identifier = frame.id;
+  rx_header.IdType = frame.ext ? FDCAN_EXTENDED_ID : FDCAN_STANDARD_ID;
+  rx_header.RxFrameType = frame.rtr ? FDCAN_REMOTE_FRAME : FDCAN_DATA_FRAME;
+  rx_header.DataLength = BspCan::lenToDlc(len);
+  rx_header.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+  rx_header.BitRateSwitch = FDCAN_BRS_OFF;
+  rx_header.FDFormat = FDCAN_CLASSIC_CAN;
+
+  bool matched = false;
   for (uint8_t i = 0; i < kMaxDevices; ++i) {
     if (device_[i] == nullptr) {
       continue;
@@ -248,7 +265,12 @@ void CanBus::processRxInterrupt(uint32_t fifo) {
       continue;
     }
     // 查到设备则调用其回调
-    device_[i]->onRx(data, len);
+    device_[i]->onRx(frame.data, len);
+    matched = true;
+  }
+
+  if (!matched) {
+    ++rx_no_match_;
   }
 }
 
@@ -271,31 +293,26 @@ void CanBus::txService() {
 
     // 然后硬件发送
     // 如果有可用fifo
-    while (HAL_FDCAN_GetTxFifoFreeLevel(&impl_) > 0U) {
+    while (backend_->txFreeLevel() > 0U) {
       ClassicPack pack = {0};
       if (tx_queue_.TryPop(pack) != Algorithm::QueueError::OK) {
         break;
       }
 
-      FDCAN_TxHeaderTypeDef tx_header = {0};
-      tx_header.Identifier = pack.id;
-      tx_header.IdType =
-          (pack.type == Type::EXTENDED) ? FDCAN_EXTENDED_ID : FDCAN_STANDARD_ID;
-      tx_header.TxFrameType = FDCAN_DATA_FRAME;
-      // tx_header.DataLength = FDCAN_DLC_BYTES_8;
-      tx_header.DataLength = pack.DLC;
-      tx_header.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
-      tx_header.BitRateSwitch = FDCAN_BRS_OFF;
-      tx_header.FDFormat = FDCAN_CLASSIC_CAN;
-      tx_header.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
-      tx_header.MessageMarker = 0;
+      // 上层只给 8 字节，DLC 超 8 的按 8 字节发
+      BspCan::FdFrame frame;
+      frame.id = pack.id;
+      frame.ext = (pack.type == Type::EXTENDED);
+      frame.len = (pack.DLC > 8U) ? 8U : static_cast<uint8_t>(pack.DLC);
+      std::memcpy(frame.data, pack.data, 8);
 
       // 调用发送,如果失败,标志busy pend,自动进行重试
-      if (HAL_FDCAN_AddMessageToTxFifoQ(&impl_, &tx_header, pack.data) !=
-          HAL_OK) {
+      if (!backend_->send(frame)) {
+        ++tx_fail_;
         tx_pend_.store(1, std::memory_order_release);
         break;
       }
+      ++tx_frames_;
     }
   } while (tx_pend_.exchange(0, std::memory_order_acq_rel) != 0);
 

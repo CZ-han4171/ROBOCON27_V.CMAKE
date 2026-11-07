@@ -29,14 +29,13 @@ const BspCan::SpiCanPins kPins = {
 };
 
 constexpr uint32_t kTaskPeriodMs = 5;     // 空闲时 5ms 醒一次
-constexpr uint32_t kMaxRxPerCycle = 8;    // 一轮最多搬 8 帧
 constexpr uint32_t kFlagInt = 0x01u;      // 任务通知标志：INT# 拉低
 constexpr uint32_t kFlagTx = 0x02u;       // 任务通知标志：有新帧进发送队列
 constexpr uint32_t kFlagWake = kFlagInt | kFlagTx;
 constexpr uint32_t kRetryDelayMs = 1000;  // 初始化失败后的重试间隔
 
 // 自测心跳：1s 发一帧经典帧 0x123，普通 USB-CAN 分析仪就能看到。
-// 接进 com_config 之后把它改成 false。
+// 上真实总线之前把它改成 false。
 constexpr bool kHeartbeat = true;
 constexpr uint32_t kHeartbeatId = 0x123;
 constexpr uint32_t kHeartbeatPeriodMs = 1000;
@@ -55,143 +54,36 @@ BspCan::SpiCanTransport::Options makeOptions() {
 
 BspCan::SpiCanTransport g_transport(hspi4, kPins, makeOptions());
 
-} // namespace
-
-Stats g_stats;
 osThreadId_t g_taskId = nullptr;
 
-BspCan::SpiCanTransport &transport() { return g_transport; }
-
-Stats snapshot() { return g_stats; }
-
-// ---------------------------------------------------------------------------
-// CAN4 总线：设备表 + 发送队列
-//
-// 为什么不直接用 CanBus：
-//   CanBus 的构造函数要 FDCAN_HandleTypeDef、收帧走 HAL_FDCAN_GetRxMessage、
-//   发送直接怼 HAL_FDCAN_AddMessageToTxFifoQ，三者都绑死在片上外设上。
-//   CAN4 是 SPI 外挂的 MCP2518FD，而且 SPI 传输不能进中断，只能在本任务里做，
-//   所以这里单独做一套同构的管理器，不碰 Canbus.hpp，三路 FDCAN 行为不变。
-// ---------------------------------------------------------------------------
-Can4Bus g_can4Bus;
-
-Can4Device::Can4Device(uint32_t rxId, bool rxExt, uint32_t txId, bool txExt)
-    : id_(rxId), rxExt_(rxExt), txId_(txId == 0 ? rxId : txId), txExt_(txExt) {}
-
-bool Can4Device::matchRx(const BspCan::FdFrame &frame) const {
-  if (frame.ext != rxExt_) {
-    return false;
-  }
-  return frame.id == id_;
-}
-
-bool Can4Device::send(const uint8_t data[8], uint8_t len, bool fd, bool brs) {
-  if (data == nullptr || len > 8) {
-    return false;
-  }
-  Can4Bus::Pack pack;
-  pack.id = txId_;
-  pack.len = len;
-  pack.ext = txExt_;
-  pack.fd = fd;
-  pack.brs = fd && brs;
-  std::memcpy(pack.data, data, len);
-  if (!g_can4Bus.addCanMsg(pack)) {
-    return false;  // 队列满，调用方下一轮自己重试
-  }
-  // 不用等 5ms 周期，直接叫醒任务把帧推给芯片；
-  // 已经在 can4SendTask 里（设备在 onRx 里回帧）就不用自己叫醒自己，
-  // 同一轮后面的 txService() 会把这帧推出去
+// 发送队列入队成功后由 CanBus 回调：不等 5ms 周期，直接叫醒本任务把帧推出去。
+// 已经在 can4SendTask 里（比如设备在 onRx 里回帧）就不用自己叫醒自己，
+// 同一轮后面的 txService() 会把它推出去。
+void notifyTxPending() {
   if (g_taskId != nullptr && osThreadGetId() != g_taskId) {
     (void)osThreadFlagsSet(g_taskId, kFlagTx);
   }
-  return true;
 }
 
-uint8_t Can4Bus::registerDevice(Can4Device *device) {
-  if (device == nullptr) {
-    return 1;
-  }
-  for (uint8_t i = 0; i < kMaxDevices; ++i) {
-    if (device_[i] == device) {
-      return 0;
-    }
-  }
-  for (uint8_t i = 0; i < kMaxDevices; ++i) {
-    if (device_[i] == nullptr) {
-      device_[i] = device;
-      return 0;
-    }
-  }
-  return 2;
-}
-
-uint8_t Can4Bus::deviceCount() const {
-  uint8_t n = 0;
-  for (uint8_t i = 0; i < kMaxDevices; ++i) {
-    if (device_[i] != nullptr) {
-      ++n;
-    }
-  }
-  return n;
-}
-
-bool Can4Bus::addCanMsg(const Pack &pack) {
-  return txQueue_.TryPush(pack) == Algorithm::QueueError::OK;
-}
-
-bool Can4Bus::addCanMsg(uint32_t id, const uint8_t data[8], uint8_t len,
-                        bool ext, bool fd, bool brs) {
-  if (data == nullptr || len > 8) {
-    return false;
-  }
-  Pack pack;
-  pack.id = id;
-  pack.len = len;
-  pack.ext = ext;
-  pack.fd = fd;
-  pack.brs = fd && brs;
-  std::memcpy(pack.data, data, len);
-  return addCanMsg(pack);
-}
-
-void Can4Bus::dispatch(const BspCan::FdFrame &frame) {
-  // 上层设备接口固定 8 字节，FD 长帧只取前 8 个
-  const uint8_t len = (frame.len > 8) ? 8 : frame.len;
-  bool matched = false;
-  for (uint8_t i = 0; i < kMaxDevices; ++i) {
-    if (device_[i] == nullptr) {
-      continue;
-    }
-    if (!device_[i]->matchRx(frame)) {
-      continue;
-    }
-    device_[i]->onRx(frame.data, len);
-    matched = true;
-  }
-  if (!matched) {
-    ++g_stats.rxNoMatch;
+// EXTI 上下文：只置标志、唤醒任务
+void onExti() {
+  g_transport.onInterrupt();
+  if (g_taskId != nullptr) {
+    osThreadFlagsSet(g_taskId, kFlagInt);
   }
 }
 
-void Can4Bus::txService() {
-  // 只有本任务会往芯片 TX FIFO 里塞帧，所以「先看空位再出队」是安全的，
-  // 不会出现出队后塞不进去、帧被吃掉的情况
-  Pack pack;
-  while (!g_transport.chip().txQueueFull() &&
-         txQueue_.TryPop(pack) == Algorithm::QueueError::OK) {
-    BspCan::FdFrame frame;
-    frame.id = pack.id;
-    frame.len = pack.len;
-    frame.ext = pack.ext;
-    frame.fdf = pack.fd;
-    frame.brs = pack.brs;
-    std::memcpy(frame.data, pack.data, pack.len);
-    if (!g_transport.send(frame)) {
-      ++g_stats.txLost;
-    }
-  }
-}
+} // namespace
+
+Stats g_stats;
+
+BspCan::SpiCanTransport &transport() { return g_transport; }
+
+// 第 4 路总线：上层是同一个 CanBus，后端换成 SPI 外挂的 MCP2518FD。
+// 从此 CAN4 上的设备就是普通的 CanDevice，四路总线用法完全一致。
+CanBus can4_bus{transport()};
+
+Stats snapshot() { return g_stats; }
 
 bool sendFrame(uint32_t id, const uint8_t *data, uint8_t len, bool ext,
                bool fd) {
@@ -208,14 +100,6 @@ bool sendFrame(uint32_t id, const uint8_t *data, uint8_t len, bool ext,
   return g_transport.send(f);
 }
 
-// EXTI 上下文：只置标志、唤醒任务
-void onExti() {
-  g_transport.onInterrupt();
-  if (g_taskId != nullptr) {
-    osThreadFlagsSet(g_taskId, kFlagInt);
-  }
-}
-
 } // namespace SpiCanApp
 
 extern "C" void can4SendTask(void *argument) {
@@ -223,6 +107,7 @@ extern "C" void can4SendTask(void *argument) {
   using namespace SpiCanApp;
 
   g_taskId = osThreadGetId();
+  can4_bus.setTxNotify(&notifyTxPending);
 
   uint32_t hbTick = osKernelGetTickCount();
   uint8_t seq = 0;
@@ -254,21 +139,20 @@ extern "C" void can4SendTask(void *argument) {
     }
 
     // ---------------- 收帧 ----------------
-    BspCan::FdFrame frame;
-    for (uint32_t i = 0; i < kMaxRxPerCycle; ++i) {
-      if (!g_transport.recv(frame)) {
-        break;
-      }
-      ++g_stats.rxFrames;
-      g_stats.lastRxId = frame.id;
-      g_stats.lastRxLen = frame.len;
-      // 按 ID 分发给注册在 CAN4 上的设备，没人认领就记一次 rxNoMatch
-      g_can4Bus.dispatch(frame);
-    }
+    // 一轮最多搬 8 帧，按 ID 分发给 registerDevice() 注册的设备
+    can4_bus.pollRx();
 
     // ---------------- 发帧 ----------------
-    // 各任务里的设备 send() 只是入队，真正推给芯片只能在任务上下文做
-    g_can4Bus.txService();
+    // 各任务里的 addCanMsg() 只是入队，真正推给芯片只能在任务上下文做
+    can4_bus.txService();
+
+    // 总线内部计数同步到调试快照
+    g_stats.rxFrames = can4_bus.rxFrameCount();
+    g_stats.txFrames = can4_bus.txFrameCount();
+    g_stats.rxNoMatch = can4_bus.rxNoMatchCount();
+    g_stats.txLost = can4_bus.txFailCount();
+    g_stats.lastRxId = can4_bus.lastRxId();
+    g_stats.lastRxLen = can4_bus.lastRxLen();
 
     // ---------------- 清芯片中断标志 ----------------
     // INT# 是电平信号，芯片内部 IF 不清就不会回到高电平，
@@ -299,13 +183,15 @@ extern "C" void can4SendTask(void *argument) {
       const uint32_t now = osKernelGetTickCount();
       if ((now - hbTick) >= kHeartbeatPeriodMs) {
         hbTick = now;
-        uint8_t payload[8];
+        // 走和真实设备同一条队列，顺带验证 addCanMsg -> txService 通路
+        CanBus::ClassicPack pack{};
+        pack.id = kHeartbeatId;
+        pack.type = CanBus::Type::STANDARD;
+        pack.DLC = 8;
         for (uint8_t i = 0; i < 8; ++i) {
-          payload[i] = seq++;
+          pack.data[i] = seq++;
         }
-        if (sendFrame(kHeartbeatId, payload, 8, false, false)) {
-          ++g_stats.txFrames;
-        }
+        (void)can4_bus.addCanMsg(pack);
       }
     }
   }

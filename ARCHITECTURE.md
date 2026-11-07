@@ -82,7 +82,7 @@ CAN 硬件收帧 → 中断
   → stm32h7xx_it.c: FDCANx_IT0_IRQHandler()
   → HAL_FDCAN_IRQHandler(&hfdcanx)                 [HAL 库]
   → Canbus.cpp: HAL_FDCAN_RxFifo0Callback()        [HAL 回调]
-  → CanBus::processRxInterrupt(): HAL_FDCAN_GetRxMessage() 取报文 → 遍历 device_[6] 按 ID 匹配
+  → CanBus::processRxInterrupt(): backend_->recvFrom() 取一帧 → 遍历 device_[12] 按 ID 匹配
   → device->onRx(data, len)                        [Motor.hpp 解析]
   → 更新 speed_/pos_/torque_ → 下一轮 PID 用
 ```
@@ -91,37 +91,51 @@ CAN 硬件收帧 → 中断
 
 ### G. 第四路 CAN：SPI 外挂 MCP2518FD（CAN4）
 
-片上只有 FDCAN1/2/3，第四路用 SPI4 + MCP2518FD 外扩：
+片上只有 FDCAN1/2/3，第四路用 SPI4 + MCP2518FD 外扩。**上层不分家**：CAN4 复用的就是同一个 `CanBus` / `CanDevice`，只把 `CanBus` 背后的**硬件后端**从片上 FDCAN 换成 SPI 外挂控制器。
 
 | 文件 | 职责 |
 |------|------|
-| `BSP/Spi_Can/ICanTransport.hpp` | 收发抽象 + `FdFrame`（最大 64 字节） |
+| `BSP/ICanTransport.hpp` | 收发抽象 `ICanTransport` + `FdFrame`（最大 64 字节），FDCAN 和 SPI 共用 |
+| `BSP/FdcanTransport.hpp` / `.cpp` | `ICanTransport` 的片上 FDCAN 实现：报文头组装、`HAL_FDCAN_*` 调用、PSR/ECR 取状态 |
 | `BSP/Spi_Can/Mcp2518fd.hpp` / `.cpp` | 芯片寄存器级驱动：SFR 读写、位时序、TXQ/RX FIFO、过滤器、中断 |
 | `BSP/Spi_Can/SpiCanTransport.hpp` / `.cpp` | `ICanTransport` 的 SPI 实现：片选、传输、超时 abort |
-| `APP/robot_com/spi_can_config.hpp` / `.cpp` | 芯片参数、`can4SendTask`、`Can4Device`/`Can4Bus` 设备表与分发 |
+| `APP/robot_com/spi_can_config.hpp` / `.cpp` | 芯片参数、`can4SendTask`、总线实例 `SpiCanApp::can4_bus` |
 
-**为什么不直接复用 `CanBus`**：它的构造函数要 `FDCAN_HandleTypeDef&`、收帧调 `HAL_FDCAN_GetRxMessage()`、发送调 `HAL_FDCAN_AddMessageToTxFifoQ()`，三处都绑死片上外设；而且 SPI 传输不能放进中断（8.59MHz 搬一帧约 70us）。所以 CAN4 用一套**同构但独立**的层，`Canbus.hpp/.cpp` 一行不动，三路 FDCAN 行为不变：
+**关键一行**：`CanBus` 的两个构造函数 —— `CanBus(FDCAN_HandleTypeDef&)` 内部包一个 `FdcanTransport`，`CanBus(ICanTransport&)` 接任意后端。于是
 
-| `CanBus`（FDCAN1/2/3） | CAN4 |
-|------------------------|------|
-| `CanBus fdcanX_bus(hfdcanX)` | 全局唯一 `SpiCanApp::g_can4Bus` |
-| `bus.registerDevice(&dev)` | `g_can4Bus.registerDevice(&dev)` |
-| `CanDevice::matchRx/onRx/buildTx` | `Can4Device::matchRx/onRx/buildTx` |
-| `addCanMsg(pack)` 入队 | `dev.send(data, len)` 入队 + 唤醒任务 |
-| 中断里 `processRxInterrupt()` 分发 | 任务里 `dispatch(frame)` 分发 |
-| 一条总线最多 6 个设备 | 最多 6 个设备 |
+```cpp
+CanBus fdcan3_bus(hfdcan3);                                  // 片上 FDCAN
+CanBus can4_bus{SpiCanApp::transport()};                     // SPI 外挂 MCP2518FD
+```
+
+两行之后的所有用法完全一致，**CAN4 上的设备就是普通 `CanDevice`**：
+
+| 用途 | FDCAN1/2/3 | CAN4 |
+|------|-----------|------|
+| 挂设备 | `fdcanX_bus.registerDevice(&dev)` | `can4_bus.registerDevice(&dev)` |
+| 设备类 | `CanDevice::matchRx/onRx/buildTx` | 同一个 `CanDevice`，一行不改 |
+| 发帧 | `addCanMsg(pack)` 入队 → 顺手试发 | `addCanMsg(pack)` 入队 → 唤醒任务送 |
+| 收帧 | 中断 `processRxInterrupt()` | 任务 `pollRx()`（一轮最多 8 帧） |
+| 硬件差异 | 中断可搬数据 | SPI 不能进中断，只能在任务里搬 |
+
+**唯一的差异**由两个小钩子吸收，不进上层：
+
+1. `ICanTransport::txFreeLevel()` —— `txService()` 先问"硬件还能塞几帧"再出队，FDCAN 返回 TxFifo 空位，SPI 返回 0/1（TXQ 只有一级缓冲）。
+2. `CanBus::setTxNotify(fn)` —— 装上回调后 `addCanMsg()` 只入队 + 回调唤醒任务，不在调用者上下文碰 SPI；没装（片上 FDCAN）就保持"入队后顺手试发"的老行为。`can4SendTask` 启动时把自己注册进去，因此设备在任意任务里发帧都能立刻出去，不用等 5ms 周期。
 
 ```
-【发送】dev.send(data, len) → g_can4Bus.addCanMsg() → MpscQueue
-       → osThreadFlagsSet(kFlagTx) → can4SendTask 提前醒来
-       → g_can4Bus.txService() → Mcp2518fd::pushTx() → 写 TXQ + 置 TXREQ
+【发送】dev 内部 addCanMsg() → MpscQueue(8 深)
+       → tx_notify_() → osThreadFlagsSet(kFlagTx) → can4SendTask 提前醒来
+       → can4_bus.txService()：txFreeLevel() > 0 才出队 → Mcp2518fd::pushTx() → 写 TXQ + 置 TXREQ
 
 【接收】INT# 下降沿 → HAL_GPIO_EXTI_Callback() → 只置标志、唤醒任务
-       → can4SendTask → Mcp2518fd::popRx() ×8（一次最多搬 8 帧）
-       → g_can4Bus.dispatch(frame) → device->onRx(data, len)
+       → can4SendTask → can4_bus.pollRx() → Mcp2518fd::popRx() ×8
+       → CanBus::dispatch(frame) → device->onRx(data, len)   ← 和 FDCAN 同一段代码
 ```
 
-排障：J-Link 挂 `SpiCanApp::g_stats`，先看 `phase`（0 Init / 1 SpiDead / 2 ConfigFail / 3 Running），再看 `devId`、`rxNoMatch`（收得到但没人认领）、`tec`/`rec`。
+`dispatch()` 会把 `FdFrame` 还原成 `FDCAN_RxHeaderTypeDef` 再调 `matchRx()`，所以 `CanDevice` 和 `Motor.hpp` 一行都不用改。FD 长帧超过 8 字节时按 8 字节截断（和 `CanDevice::onRx` 的签名一致），要真用 64 字节得改设备层接口。
+
+排障：J-Link 挂 `SpiCanApp::g_stats`，先看 `phase`（0 Init / 1 SpiDead / 2 ConfigFail / 3 Running），再看 `devId`、`rxNoMatch`（收得到但没人认领）、`txLost`（出队后没推给芯片）、`tec`/`rec`。这些计数直接来自 `CanBus` 内部，四条总线通用。
 
 ---
 

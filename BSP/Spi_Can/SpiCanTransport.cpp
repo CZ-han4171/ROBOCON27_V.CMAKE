@@ -78,6 +78,11 @@ bool SpiCanTransport::send(const FdFrame &frame) { return chip_.pushTx(frame); }
 
 bool SpiCanTransport::recv(FdFrame &frame) { return chip_.popRx(frame); }
 
+uint32_t SpiCanTransport::txFreeLevel() {
+  // TXQ 只有一级缓冲，塞得进就是 1，满了就是 0
+  return chip_.txQueueFull() ? 0U : 1U;
+}
+
 void SpiCanTransport::onInterrupt() {
   // 中断里不碰 SPI：8.59MHz 下搬一帧 72 字节约 70us，放在中断里会把控制任务顶歪
   ++irqCount_;

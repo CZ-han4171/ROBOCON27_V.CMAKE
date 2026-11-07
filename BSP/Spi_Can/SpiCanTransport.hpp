@@ -49,6 +49,8 @@ public:
   bool start() override;
   bool send(const FdFrame &frame) override;
   bool recv(FdFrame &frame) override;
+  // TXQ 还剩几个空位：满了就返回 0，CanBus 这一轮不再出队
+  uint32_t txFreeLevel() override;
   void onInterrupt() override;
   bool busHealthy() const override;
   void errorCounters(uint8_t &tec, uint8_t &rec) const override;

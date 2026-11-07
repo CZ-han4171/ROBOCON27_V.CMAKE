@@ -50,6 +50,7 @@
 #include <stdio.h>
 
 #include "robot_devices.hpp"
+#include "spi_can_config.hpp" //第 4 路 CAN（SPI4 + MCP2518FD）
 
 osThreadId_t CAN1_Send_TaskHandle;
 osThreadId_t CAN2_Send_TaskHandle;
@@ -214,6 +215,11 @@ uint8_t comServiceInit() {
   canFilterInit(&hfdcan3, FDCAN_EXTENDED_ID, FDCAN_FILTER_TO_RXFIFO1, 0, 0);
   bspCanInit(&hfdcan3);
 
+  // 第 4 路 CAN：芯片初始化在 can4SendTask 里做，这里只清设备表。
+  // 不能在这里初始化 MCP2518FD —— Robot_Init() 是关中断状态，
+  // HAL 阻塞式 SPI 靠 SysTick 计时超时，会死等。
+  (void)SpiCanApp::can4_bus.init();
+
   //can设备注册
   fdcan2_bus.registerDevice(&Encoder_1);
   fdcan2_bus.registerDevice(&Encoder_2);
@@ -236,6 +242,9 @@ uint8_t comServiceInit() {
   // fdcan2_bus.registerDevice(&arm2006_motor);
   // fdcan3_bus.registerDevice(&arm3508_motor);
   fdcan2_bus.registerDevice(&arm4310_motor);
+
+  // CAN4 上的设备同样继承 CanDevice，构造时把 &can4_bus 当总线传进去：
+  // can4_bus.registerDevice(&xxx);
 
   // 串口外设
   uart2_rx_semphore = osSemaphoreNew(1, 0, NULL);
