@@ -62,7 +62,9 @@ function(include_sub_directories_recursively root_dir)
 endfunction()
 
 #递归添加用户源文件
-file(GLOB_RECURSE SOURCES
+#CONFIGURE_DEPENDS：新增/删除/重命名源文件后 ninja 会自动重跑 configure，
+#                   不用手动敲 cmake --preset Debug 去刷新文件列表
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "APP/*.c"
     "APP/*.cpp"
     "BSP/*.c"

@@ -342,8 +342,42 @@ void can3SendTask(void *argument) {
   uint8_t len = 8;  
   const uint32_t chassis_motor_ids[4] = {0x201, 0x202, 0x203, 0x204};
 
+  // =====【测试代码】开机后让电机转 3 秒，然后停 =====
+  // ===== 速度环 PID（抄师兄底盘参数，只初始化一次）=====
+  static PID_t speed_pid;
+  static bool pid_inited = false;
+  if (!pid_inited) {
+    speed_pid = {};
+    speed_pid.Kp = 100.0f;
+    speed_pid.Ki = 80.0f;
+    speed_pid.Kd = 0.0f;
+    speed_pid.MaxOut = 20000.0f;
+    speed_pid.DeadBand = 0.3f;
+    speed_pid.Improve = NONE;
+    PID_Init(&speed_pid);
+    pid_inited = true;
+  }
+
+  // ===== 两个旋钮：转多快、转多久 =====
+  const float TARGET_SPEED = 2.0f;      // 目标速度(rad/s)，2.0 很慢，约0.32圈/秒
+  const TickType_t TEST_MS = 3000;      // 转 3 秒后停（改这里=改时长）
+  TickType_t test_start = xTaskGetTickCount();
+
   for (;;) {
+    //测试代码
     // 一帧固定打包 4 个槽位：0x201~0x204
+    float target = 0.0f;
+    if ((xTaskGetTickCount() - test_start) < TEST_MS) {
+      target = TARGET_SPEED;   // 前 3 秒：匀速转
+    } else {
+      target = 0.0f;           // 时间到：速度环把转速收回到 0（不是急停，是减速停）
+    }
+
+    // 速度环：PID 算电流 → 设给电机
+    float current_cmd = PID_Calculate(&speed_pid,
+                                      chassis_motor1.getCurrentSpeed(),  // 反馈(rad/s)
+                                      target);                           // 目标(rad/s)
+    chassis_motor1.setMotorCmd(current_cmd);
     pack.id = 0x200; // DJI Group 2
 
     // 当前仅有 0x201(arm2006) 和 0x203(arm3508)，其余槽位置 0
