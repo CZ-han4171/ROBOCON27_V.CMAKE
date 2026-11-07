@@ -89,6 +89,40 @@ CAN 硬件收帧 → 中断
 
 一句话：`Core/` 管"硬件怎么配"，`BSP/Canbus.*` 管"总线怎么收发"，`Module/motor/Motor.hpp` 管"报文怎么解析"，`APP/robot_com/com_config.cpp` 管"挂哪些设备、什么时候发"。
 
+### G. 第四路 CAN：SPI 外挂 MCP2518FD（CAN4）
+
+片上只有 FDCAN1/2/3，第四路用 SPI4 + MCP2518FD 外扩：
+
+| 文件 | 职责 |
+|------|------|
+| `BSP/Spi_Can/ICanTransport.hpp` | 收发抽象 + `FdFrame`（最大 64 字节） |
+| `BSP/Spi_Can/Mcp2518fd.hpp` / `.cpp` | 芯片寄存器级驱动：SFR 读写、位时序、TXQ/RX FIFO、过滤器、中断 |
+| `BSP/Spi_Can/SpiCanTransport.hpp` / `.cpp` | `ICanTransport` 的 SPI 实现：片选、传输、超时 abort |
+| `APP/robot_com/spi_can_config.hpp` / `.cpp` | 芯片参数、`can4SendTask`、`Can4Device`/`Can4Bus` 设备表与分发 |
+
+**为什么不直接复用 `CanBus`**：它的构造函数要 `FDCAN_HandleTypeDef&`、收帧调 `HAL_FDCAN_GetRxMessage()`、发送调 `HAL_FDCAN_AddMessageToTxFifoQ()`，三处都绑死片上外设；而且 SPI 传输不能放进中断（8.59MHz 搬一帧约 70us）。所以 CAN4 用一套**同构但独立**的层，`Canbus.hpp/.cpp` 一行不动，三路 FDCAN 行为不变：
+
+| `CanBus`（FDCAN1/2/3） | CAN4 |
+|------------------------|------|
+| `CanBus fdcanX_bus(hfdcanX)` | 全局唯一 `SpiCanApp::g_can4Bus` |
+| `bus.registerDevice(&dev)` | `g_can4Bus.registerDevice(&dev)` |
+| `CanDevice::matchRx/onRx/buildTx` | `Can4Device::matchRx/onRx/buildTx` |
+| `addCanMsg(pack)` 入队 | `dev.send(data, len)` 入队 + 唤醒任务 |
+| 中断里 `processRxInterrupt()` 分发 | 任务里 `dispatch(frame)` 分发 |
+| 一条总线最多 6 个设备 | 最多 6 个设备 |
+
+```
+【发送】dev.send(data, len) → g_can4Bus.addCanMsg() → MpscQueue
+       → osThreadFlagsSet(kFlagTx) → can4SendTask 提前醒来
+       → g_can4Bus.txService() → Mcp2518fd::pushTx() → 写 TXQ + 置 TXREQ
+
+【接收】INT# 下降沿 → HAL_GPIO_EXTI_Callback() → 只置标志、唤醒任务
+       → can4SendTask → Mcp2518fd::popRx() ×8（一次最多搬 8 帧）
+       → g_can4Bus.dispatch(frame) → device->onRx(data, len)
+```
+
+排障：J-Link 挂 `SpiCanApp::g_stats`，先看 `phase`（0 Init / 1 SpiDead / 2 ConfigFail / 3 Running），再看 `devId`、`rxNoMatch`（收得到但没人认领）、`tec`/`rec`。
+
 ---
 
 ## 三、任务（线程）清单 — 一张表看全
@@ -100,6 +134,7 @@ CAN 硬件收帧 → 中断
 | can1SendTask | VESC U8×4 组帧发送 | 1ms | Normal |
 | can2SendTask | arm2006/3508/4310 组帧发送 | 1ms | Normal |
 | can3SendTask | 底盘 4 电机组帧发送 | 1ms | Normal |
+| can4SendTask | 第 4 路 CAN（SPI→MCP2518FD）收发与设备分发 | 5ms + INT# 唤醒 | Normal |
 | chassisTask | 底盘运动学逆解 + PID | — | Normal |
 | controlTask | 控制逻辑/状态机 | — | BelowNormal7 |
 | debugTask | 调试化粪池（新功能先写这） | — | Normal |
