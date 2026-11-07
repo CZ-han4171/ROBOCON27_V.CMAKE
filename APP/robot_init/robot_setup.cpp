@@ -60,6 +60,8 @@ void RobotDevices_Init() {
     DJI2006_motor3.init();
     DJI2006_motor4.init();
 
+    DJI2006_motor_VPleft.init();
+    DJI2006_motor_VPright.init();
     // arm3508_motor.init();
     arm4310_motor.init();
 

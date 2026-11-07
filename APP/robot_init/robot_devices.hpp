@@ -57,3 +57,11 @@ extern C620Motor chassis_motor4;
 
 //上层电机
 extern DM4310Motor arm4310_motor;
+extern C610Motor DJI2006_motor_VPleft;
+extern C610Motor DJI2006_motor_VPright;
+
+extern DJIMotorController DJI2006_motor_VPleft_controller;
+extern DJIMotorController DJI2006_motor_VPright_controller;
+
+extern RotaryAxis VPLeft;
+extern RotaryAxis VPRight;

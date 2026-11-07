@@ -31,12 +31,16 @@
 #include "MotorControl.hpp"
 #include "Axis.hpp"
 #include "Encoder.hpp"
+#include <algorithm>
 
 osThreadId_t ControlTaskHandle;
 
 // ===== 发布者 =====
 TypedTopicPublisher<pub_chassis_cmd> chassis_data_pub("chassis_cmd");
 pub_chassis_cmd rm_cmd{};
+
+TypedTopicPublisher<pub_VPupper_cmd> VPupper_data_pub("VPupper_cmd");
+pub_VPupper_cmd VPupper_cmd{};
 
 // static TypedTopicPublisher<QR_code_cmd_t> qr_code_cmd_pub("qr_code_cmd");   
 // static QR_code_cmd_t qr_code_cmd{};
@@ -119,6 +123,7 @@ float v_aim;
 void controlTask(void *argument) {
     TickType_t currentTime = xTaskGetTickCount();
     TickType_t rcUpdateTime = currentTime;
+    TickType_t vpUpdateTime = currentTime;
     constexpr TickType_t kRemoteInputTimeout = pdMS_TO_TICKS(500);
 
     control_rm_cmd.joyLHori = kJoyCenter;
@@ -146,18 +151,34 @@ void controlTask(void *argument) {
         }
         control_rm_cmd_last = control_rm_cmd;
 
-        {
-            rm_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
-            rm_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
-            rm_cmd.omega_    = -JoyToVelocity(control_rm_cmd.joyRHori, kJoyDeadZoneRight, MAX_VELOCITY_ANGULAR);
+        // {
+        //     rm_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
+        //     rm_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
+        //     rm_cmd.omega_    = -JoyToVelocity(control_rm_cmd.joyRHori, kJoyDeadZoneRight, MAX_VELOCITY_ANGULAR);
 
-            rm_angle_deg = atan2(rm_cmd.linear_y_, rm_cmd.linear_x_) / kDegToRad;
-            v_aim = sqrt(rm_cmd.linear_x_ * rm_cmd.linear_x_ + rm_cmd.linear_y_ * rm_cmd.linear_y_);
-            robot_v_aim_cmd.linear_x_ = v_aim * cos((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
-            robot_v_aim_cmd.linear_y_ = v_aim * sin((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
-            robot_v_aim_cmd.omega_ = rm_cmd.omega_;    
+        //     rm_angle_deg = atan2(rm_cmd.linear_y_, rm_cmd.linear_x_) / kDegToRad;
+        //     v_aim = sqrt(rm_cmd.linear_x_ * rm_cmd.linear_x_ + rm_cmd.linear_y_ * rm_cmd.linear_y_);
+        //     robot_v_aim_cmd.linear_x_ = v_aim * cos((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
+        //     robot_v_aim_cmd.linear_y_ = v_aim * sin((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
+        //     robot_v_aim_cmd.omega_ = rm_cmd.omega_;    
+        // }
+
+        // 摇杆量映射为角速度（度/秒）；负向减小目标角度，正向增大。
+        const float vpDt = static_cast<float>(now - vpUpdateTime) *
+                           static_cast<float>(portTICK_PERIOD_MS) * 0.001f;
+        vpUpdateTime = now;
+        const bool remoteFresh = (now - rcUpdateTime <= kRemoteInputTimeout);
+        if (remoteFresh && control_rm_cmd.swA == RM_2_POS_SW_State_t::DOWN) {
+            VPupper_cmd.pitch = std::clamp(
+                VPupper_cmd.pitch + JoyToVelocity(control_rm_cmd.joyLVert,
+                                                   kJoyDeadZoneLeft, 30.0f) * vpDt,
+                0.0f, 180.0f);
+            VPupper_cmd.yaw = std::clamp(
+                VPupper_cmd.yaw + JoyToVelocity(control_rm_cmd.joyLHori,
+                                                 kJoyDeadZoneLeft, 30.0f) * vpDt,
+                0.0f, 360.0f);
+            VPupper_data_pub.Publish(VPupper_cmd);
         }
-
         {   
             /////////////////debug begin///////////////////////
             // debug_dt = DWT_GetDeltaT(&debug_DWT_CNT);

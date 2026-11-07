@@ -21,6 +21,7 @@
 /* bsp 层接口头文件 */
 #include "bsp_dwt.h"
 #include "chassis_task.h"
+#include "upper_task.hpp"
 #include "com_config.hpp"
 #include "control_task.h"
 #include "debug_task.h"
@@ -42,7 +43,7 @@ extern osThreadId_t ControlTaskHandle;
 extern osThreadId_t usbcdcProcessTaskHandle;
 extern osThreadId_t usbcdcSendTaskHandle;
 extern osThreadId_t DebugSerialTaskHandle;
-
+extern osThreadId_t VPupperTaskHandle;
 
 void osTaskInit(void) {
   const osThreadAttr_t CAN1_SendTaskHandle_attributes = {
@@ -159,4 +160,12 @@ void osTaskInit(void) {
   };
   uart3SendTaskHandle =
       osThreadNew(uart3SendTask, NULL, &Uart3SendTaskHandle_attributes);
+
+  const osThreadAttr_t VPupperTaskHandle_attributes = {
+      .name = "VPupper_TaskHandle",
+      .stack_size = 256 * 4,
+      .priority = (osPriority_t)osPriorityNormal1,
+  };
+  VPupperTaskHandle =   
+      osThreadNew(VPupperTask, NULL, &VPupperTaskHandle_attributes);
 }

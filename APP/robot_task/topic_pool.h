@@ -134,4 +134,9 @@ typedef struct {
 
 } pub_Position_Data;
 
+typedef struct {
+  float pitch;
+  float yaw;
+} pub_VPupper_cmd;
+
 #pragma pack()
