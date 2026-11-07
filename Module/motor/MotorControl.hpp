@@ -23,6 +23,7 @@
 #include "bsp_dwt.h"
 #include "Motor.hpp"
 #include "pid_controller.hpp"
+#include "ControlOptimize.hpp"
 #include "tool.hpp"
 #include "topic_pool.h"
 #include <functional>
@@ -31,25 +32,9 @@ class MotorControllerBase {
 public:
     MotorControllerBase() = default;
 
-    enum class Control_Improvement{
-        NONE,
-        SPEEDPLAN,
-    };
-
     enum class FeedBackDirection{
         kPositive,
         kNegative,
-    };
-
-    struct PlanParam {
-        float Acc;
-        float Dec;
-        float kPlan2Pid;
-        float MixBegin;
-        float MixEnd;
-
-        PlanParam(float Acc_in = M_PI, float Dec_in = M_PI, float MixBegin_in = M_PI/4.0f, float Mix_End_in = M_PI/10.0f)
-            :Acc(Acc_in), Dec(Dec_in), MixBegin(MixBegin_in), MixEnd(Mix_End_in){}
     };
 
     virtual void MotorCurrentCtrl(float current){};
@@ -70,16 +55,17 @@ public:
     void ConfigFeedBackRatio(float ratio){ feedback_rad_per_motor_rad_ = ratio; }
 
     void setMaxPosSpeed_rad_s(float MaxSpeed_rad_s){
-        pos_pid_.MaxOut = MaxSpeed_rad_s;
+        optimizer_.plan_param_.w_Max = MaxSpeed_rad_s;
     }
-    void ConfigControlImprovement(const Control_Improvement &Improvement){
-        Improvement_ = Improvement;
+    void ConfigControlImprovement(const ControlOptimizer::Control_Improvement Improvement){
+        optimizer_.ConfigImprovement(Improvement);
     }
     void ConfigSpeedPid(const PidParam &param){
         applyPidParam(speed_pid_, param);
     }
     void ConfigPosPid(const PidParam &param){
         applyPidParam(pos_pid_, param);
+        applyPidParam(optimizer_.pos_pid_, param);
     }
     static void applyPidParam(PID_t &pid, const PidParam &param) {
         pid = {};
@@ -91,34 +77,8 @@ public:
         pid.Improve = param.improve;
         PID_Init(&pid);
     }
-    void applyPlanParam(const PlanParam &plan_param){
-        plan_param_ = plan_param;
-    }
-
-    float UpdatePlanSpeed(float delat){
-        float w_Acc = fabs(pos_output_) + plan_param_.Acc*dt;
-        float w_Dec = sqrt(2.0f*plan_param_.Dec*fabs(delat));
-        float plan_pos_output_tmp;
-        if(pos_pid_.MaxOut < w_Acc && pos_pid_.MaxOut < w_Dec){
-            plan_pos_output_tmp = pos_pid_.MaxOut;
-        }else if(w_Acc > w_Dec){
-            plan_pos_output_tmp = w_Dec;
-        }else {
-            plan_pos_output_tmp = w_Acc;
-        };
-        return plan_pos_output_tmp*sign(delat);
-    };
-
-    float UpdatePlanK(float delat){
-        float K_tmp;
-        if(fabs(delat) > plan_param_.MixBegin){
-            K_tmp = 1.0f;
-        }else if(fabs(delat) <= plan_param_.MixBegin && fabs(delat) > plan_param_.MixEnd){
-            K_tmp = (fabs(delat)-(plan_param_.MixEnd))/((plan_param_.MixBegin)-(plan_param_.MixEnd));
-        }else if(fabs(delat) <= plan_param_.MixEnd){
-            K_tmp = 0.0f;
-        }
-        return K_tmp;
+    void applyPlanParam(const ControlOptimizer::PlanParam &plan_param){
+        optimizer_.ConfigPlanParam(plan_param);
     }
 
     float watch[10] = {0};
@@ -134,11 +94,12 @@ public:
     float plan_pos_output_;
     float pos_output_;
 
-    float dt;
-    uint32_t DWT_CNT;
+    // float dt;
+    // uint32_t DWT_CNT;
 
-    Control_Improvement Improvement_{Control_Improvement::NONE};
-    PlanParam plan_param_;
+    ControlOptimizer optimizer_;
+    ControlOptimizer::Control_Improvement Improvement_{ControlOptimizer::Control_Improvement::NONE};
+    // PlanParam plan_param_;
 };
 
 class DJIMotorController : public MotorControllerBase{
@@ -155,11 +116,13 @@ public:
         feedback_rad_per_motor_rad_ = ratio;
     }
 
-    void init(const PlanParam &plan_param, const PidParam &speed_param, const PidParam &pos_param, const Control_Improvement &improvement){
-        applyPlanParam(plan_param);
+    void init(const ControlOptimizer::PlanParam &plan_param, const PidParam &speed_param, 
+              const PidParam &pos_param, const ControlOptimizer::Control_Improvement &improvement){
         ConfigSpeedPid(speed_param);
         ConfigPosPid(pos_param);
+        applyPlanParam(plan_param);
         ConfigControlImprovement(improvement);
+        // optimizer_.Init(getMotorSumPos_rad());
     }
 
     void MotorCurrentCtrl(float Current) override {
@@ -181,32 +144,15 @@ public:
 
     void MotorSumPosCtrl_rad(float sum_pos) override {
         float actual_sum_pos = getMotorSumPos_rad();
-        float delat = sum_pos - actual_sum_pos;
-        dt = DWT_GetDeltaT(&DWT_CNT);
-        switch(Improvement_) {
-            case Control_Improvement::NONE:
-                pid_sum_pos_output_ = PID_Calculate(
-                &pos_pid_,
-                actual_sum_pos, // 输出轴角度(rad)
-                sum_pos);
-                pos_output_ = pid_sum_pos_output_;
-                break;
-            case Control_Improvement::SPEEDPLAN:
-                pid_sum_pos_output_ = PID_Calculate(
-                &pos_pid_,
-                actual_sum_pos, // 输出轴角度(rad)
-                sum_pos);
-                plan_pos_output_ = UpdatePlanSpeed(delat);
-                plan_param_.kPlan2Pid = UpdatePlanK(delat);
-                pos_output_ = plan_pos_output_*plan_param_.kPlan2Pid + pid_sum_pos_output_*(1-plan_param_.kPlan2Pid);
-                break;
-        }
+        optimizer_.Set(sum_pos,actual_sum_pos);
+        pos_output_ = optimizer_.Run(actual_sum_pos);
+
         MotorSpeedCtrl_rad_s(pos_output_);
     }
 
     float getMotorSpeed_rad() override {
         return motor_.getCurrentSpeed();
-    }
+    } 
 
 private:
     MotorBase& motor_;
