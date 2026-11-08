@@ -4,6 +4,8 @@
 
 osThreadId_t VPupperTaskHandle;
 
+#define kVPupperTaskPeriod 1.0f
+
 volatile float VPleftMotorSumPos_rad = 0.0f;
 volatile float VPrightMotorSumPos_rad = 0.0f;
 
@@ -17,7 +19,7 @@ void VPupperTask(void *argument) {
         VPleftMotorSumPos_rad = DJI2006_motor_VPleft_controller.getMotorSumPos_rad();
         VPrightMotorSumPos_rad = DJI2006_motor_VPright_controller.getMotorSumPos_rad();
         vp_sub.TryGet(&cmd);          
-        vp.run(cmd);
-        vTaskDelayUntil(&tick, 1);
+        vp.run(cmd,kVPupperTaskPeriod);
+        vTaskDelayUntil(&tick, kVPupperTaskPeriod);
     }
 }

@@ -55,13 +55,6 @@ public:
         MotorController_.MotorSumPosCtrl_rad(Motor_sum_pos);
     }
 
-    void setAxisSumPos_rad(float Axis_sum_pos){
-        UpdateAxisPos();
-        Axis_traget_sum_pos_ = Axis_sum_pos;
-        float Motor_sum_pos = Axis_traget_sum_pos_*motor_rad_per_output_rad_;
-        MotorController_.MotorSumPosCtrl_rad(Motor_sum_pos);
-    }
-
     void setAxisSpeed_rad_s(float Axis_speed){
         float Motor_speed = Axis_speed*motor_rad_per_output_rad_;
         MotorController_.MotorSpeedCtrl_rad_s(Motor_speed);
