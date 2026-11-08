@@ -228,6 +228,8 @@ uint8_t comServiceInit() {
   fdcan1_bus.registerDevice(&U8_motor3);
   fdcan1_bus.registerDevice(&U8_motor4);
 
+ 
+
   fdcan3_bus.registerDevice(&chassis_motor1);
   fdcan3_bus.registerDevice(&chassis_motor2);
   fdcan3_bus.registerDevice(&chassis_motor3);
@@ -239,6 +241,7 @@ uint8_t comServiceInit() {
   // fdcan2_bus.registerDevice(&arm2006_motor);
   // fdcan3_bus.registerDevice(&arm3508_motor);
   fdcan2_bus.registerDevice(&arm4310_motor);
+  fdcan2_bus.registerDevice(&lift3508_motor);
 
   // 串口外设
   uart2_rx_semphore = osSemaphoreNew(1, 0, NULL);
@@ -327,22 +330,33 @@ void can1SendTask(void *argument) {
 
 void can2SendTask(void *argument) {
   TickType_t currentTime = xTaskGetTickCount();
-  CanBus::ClassicPack pack;
-  pack.type = CanBus::Type::STANDARD;
+
+  CanBus::ClassicPack pack_group1;
+  pack_group1.type = CanBus::Type::STANDARD;
+  const uint32_t motor_group1_ids[4] = {0x201, 0x202, 0x203, 0x204};
+
+  CanBus::ClassicPack pack_group2;
+  pack_group2.type = CanBus::Type::STANDARD;
+  const uint32_t motor_group2_ids[4] = {0x205, 0x206, 0x207, 0x208};
   uint8_t len = 8;
-  const uint32_t arm_motor_ids[4] = {0x205, 0x206, 0x207, 0x208};
   for (;;) {
-    pack.id = 0x1FF; // DJI Group 2
-    // 当前仅有 0x201(arm2006) 和 0x203(arm3508)，其余槽位置 0
-    int16_t commands[4] = {0};
- 
-    // arm motor
-    commands[0] = static_cast<int16_t>(DJI2006_motor1.cmdTrans()); // 0x201
-    commands[1] = static_cast<int16_t>(DJI2006_motor2.cmdTrans()); // 0x203
-    commands[2] = static_cast<int16_t>(DJI2006_motor3.cmdTrans()); // 0x203
-    commands[3] = static_cast<int16_t>(DJI2006_motor4.cmdTrans()); // 0x204
-    packDJIMotorCanMsg(pack.id, arm_motor_ids, commands, 4, pack.data, len);
-    fdcan2_bus.addCanMsg(pack);
+    pack_group1.id = 0x200; // DJI Group 1
+    int16_t commands_group1[4] = {0};
+    commands_group1[0] = static_cast<int16_t>(lift3508_motor.cmdTrans()); // 0x201
+    commands_group1[1] = static_cast<int16_t>(0); // 0x202
+    commands_group1[2] = static_cast<int16_t>(0); // 0x203
+    commands_group1[3] = static_cast<int16_t>(0); // 0x204
+    packDJIMotorCanMsg(pack_group1.id, motor_group1_ids, commands_group1, 4, pack_group1.data, len);
+    fdcan2_bus.addCanMsg(pack_group1);
+
+    pack_group2.id = 0x1FF; // DJI Group 2
+    int16_t commands_group2[4] = {0};
+    commands_group2[0] = static_cast<int16_t>(DJI2006_motor1.cmdTrans()); // 0x205
+    commands_group2[1] = static_cast<int16_t>(DJI2006_motor2.cmdTrans()); // 0x206
+    commands_group2[2] = static_cast<int16_t>(DJI2006_motor3.cmdTrans()); // 0x207
+    commands_group2[3] = static_cast<int16_t>(DJI2006_motor4.cmdTrans()); // 0x208
+    packDJIMotorCanMsg(pack_group2.id, motor_group2_ids, commands_group2, 4, pack_group2.data, len);
+    fdcan2_bus.addCanMsg(pack_group2);
 
     vTaskDelayUntil(&currentTime, 1); // 每1ms执行一次发送任务
   }

@@ -31,6 +31,7 @@
 #include "MotorControl.hpp"
 #include "Axis.hpp"
 #include "Encoder.hpp"
+#include "robot_devices.hpp"
 #include <algorithm>
 
 osThreadId_t ControlTaskHandle;
@@ -57,26 +58,26 @@ pub_chassis_cmd robot_v_aim_cmd{};
 pub_chassis_cmd state_now_cmd{};
 
 //debug begin
-extern VESCMotor U8_motor3;
+// extern VESCMotor U8_motor3;
 float EncoderSumPos_rad = 0.0f;
 int32_t U8_3_erpm = 0;
 
-extern RotaryAxis SwerveSteer3;
-extern DJIMotorController DJI2006_controller3;
-extern C610Motor DJI2006_motor3;
-extern BRT38B Encoder_3;
+// extern RotaryAxis SwerveSteer3;
+// extern DJIMotorController DJI2006_controller3;
+// extern C610Motor DJI2006_motor3;
+// extern BRT38B Encoder_3;
 float Cmd2006 = 0.0f;
 float Speed2006 = 0.0f;
 float SteerPos_Deg_traget = 0.0f;
 float SteerPos_Deg_actual = 0.0f;
 float SteerPos_Deg_traget_last = 0.0f;
 
-extern PidParam M2006_P38_SpeedPid;
-extern PidParam M2006_P38_PosPid;
-extern PidParam U8Lite_SpeedPid;
+// extern PidParam M2006_P38_SpeedPid;
+// extern PidParam M2006_P38_PosPid;
+// extern PidParam U8Lite_SpeedPid;
 
-extern VESCMotorController U8_controller3;
-extern RotaryAxis SwerveDrive3;
+// extern VESCMotorController U8_controller3;
+// extern RotaryAxis SwerveDrive3;
 
 // PID_t DJI3508_SpeedPid{.Kp = 800.0f,.Ki = 2000.0f,.Kd = 0.01f,.MaxOut = 16000.0f,.DeadBand = 0.0f,.Improve = IMCREATEMENT_OF_OUT};
 float DJI3508_w_rad_aim = 0;
@@ -87,6 +88,7 @@ float_t all_time = 0;
 float_t debug_dt;
 uint32_t debug_DWT_CNT;
 CanBus::ClassicPack debug_pack;
+bool is_OnZero = false;
 bool button = false;
 extern CanBus fdcan2_bus;
 
@@ -204,6 +206,16 @@ void controlTask(void *argument) {
 
             // SwerveDrive3.setAxisSpeed_rad_s(JoyToVelocity(control_rm_cmd.joyRVert, kJoyDeadZoneLeft, 10*M_PI));
             // U8_controller3.MotorCurrentCtrl(JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, 2000.0f));
+            if(lift3508_controller.isMotorStalled()){
+                is_OnZero = true;
+                lift3508_motor.setMotorPosZero();
+            }
+            if(is_OnZero){
+                lift3508_axis.setAxisPos_meter(0.159f);
+            }else {
+                lift3508_controller.MotorMitCtrl(M_PI, 0.0f, 0.0f, 0.0f, 0.5f);
+            }
+            
             watch[0] = U8_controller3.getMotorSpeed_rad();
             // // U8_motor3.setMotorCtrl(U8_3_erpm, VESCMotor::VESC_MODE::SET_ERPM);
             if(button){

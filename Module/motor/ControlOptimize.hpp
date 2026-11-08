@@ -87,7 +87,7 @@ public:
             traj_param_.T = T;
         };
     }
-    float Run(float actual_pos){
+    void Run(float actual_pos){
         traj_param_.now = actual_pos;
         if(fabs( - traj_param_.delat_ref()) < 0.001f && fabs(pos_output_) < 0.001f){
             traj_param_.ref = traj_param_.traget;
@@ -100,8 +100,9 @@ public:
 
         pos_output_ = ControlImprovementChoose(Improvement_);
         traj_param_last_ = traj_param_;
-        return pos_output_;
     }
+    float GetPosOutput(){ return pos_output_; }
+    float GetPosRef(){ return traj_param_.ref; }
 
     float ControlImprovementChoose(Control_Improvement Improvement){
         switch (Improvement) {

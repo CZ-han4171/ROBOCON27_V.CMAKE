@@ -65,3 +65,6 @@ extern DJIMotorController DJI2006_motor_VPright_controller;
 
 extern RotaryAxis VPLeft;
 extern RotaryAxis VPRight;
+extern C620Motor lift3508_motor;
+extern DJIMotorController lift3508_controller;
+extern LinearAxis lift3508_axis;

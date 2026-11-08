@@ -97,3 +97,6 @@ C610Motor DJI2006_motor_EVP(&fdcan1_bus, 0x208, false, 0x1FF, false);
 // DJIMotorController arm3508_controller(arm3508_motor);
 // RotaryAxis arm3508_Axis(arm3508_controller, 1.0f);
 
+C620Motor lift3508_motor(&fdcan2_bus, 0x201, false, 0x200, false);
+DJIMotorController lift3508_controller(lift3508_motor);
+LinearAxis lift3508_axis(lift3508_controller,-2*M_PI/(0.045f*M_PI));
