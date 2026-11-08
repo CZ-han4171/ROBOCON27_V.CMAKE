@@ -32,6 +32,9 @@
 #define RPM_2_ANGLE_PER_SEC 6.0f       // 360/60,转每分钟 转化 度每秒
 #define RPM_2_RAD_PER_SEC 0.104719755f // ×2pi/60sec,转每分钟 转化 弧度每秒
 
+#define TorqueConstant_3508_P19 0.0003f // 单位 N*m/mA
+#define TorqueConstant_2006_P36 0.00018f // 单位 N*m/mA
+
 constexpr float MOTOR_RX_TIMEOUT_S = 0.05f; // 电机状态超时阈值，单位毫秒
 
 class MotorBase {
@@ -49,9 +52,12 @@ public:
 
   void setMotorReduction(const float config) { reduction_ratio_ = config; }
   void setMaxCmd(const float config) { max_cmd_ = config; }
+  void setMotorTurqueConstant(const float config) { torque_constant_ = config; }
+  float getMotorReduction(){ return reduction_ratio_; }
+  float getMotorTurqueConstant(){ return torque_constant_; }
 
-  float getCurrentSinglePos(void) const { return single_pos_; }
-  float getCurrentSumPos(void) const { return sum_pos_; }
+  float getCurrentSinglePos(void) const { return single_pos_ - single_pos_zero; }
+  float getCurrentSumPos(void) const { return sum_pos_ - sum_pos_zero; }
   float getCurrentSpeed(void) const { return speed_; }
   float getCurrentTorque(void) const { return torque_; }
   float getCurrentTemperature(void) const { return temperature_; }
@@ -60,6 +66,11 @@ public:
   float getRawCurrentSumPos(void) const { return raw_sum_pos_; }
   float getRawCurrentSpeed(void) const { return raw_speed_; }
   float getRawCurrentTorque(void) const { return raw_torque_; }
+
+  void setMotorPosZero(){
+    sum_pos_zero = sum_pos_;
+    single_pos_zero = single_pos_;
+  }
 
   virtual bool isOffline() { return (DWT_GetTimeline_s() - last_rx_timestamp_s > MOTOR_RX_TIMEOUT_S);}
   uint32_t getRxTimestamp() const { return last_rx_timestamp_s; }
@@ -73,6 +84,8 @@ public:
 
   // 电机减速比
   float reduction_ratio_{1};
+  // 扭矩常数
+  float torque_constant_{0.0f};
 
   // 电机状态量(最原始)
   float raw_single_pos_{0}; // 单圈位置
@@ -85,9 +98,13 @@ public:
   float single_pos_last_{0};  // 单圈位置_上次
   float single_pos_delat_{0};  // 单圈位置_差值
   float sum_pos_{0};     // 多圈累加
-  float speed_{0};       // 速度
-  float torque_{0};      // 力矩
-  float temperature_{0}; // 温度
+  float speed_{0};       // 速度 rad/s
+  float torque_{0};      // 力矩 N*m/mA
+  float temperature_{0}; // 温度 
+  float current_{0}; //电流 mA
+
+  float sum_pos_zero{0};
+  float single_pos_zero{0};
 };
 
 enum DJIMotorCanGroup {
@@ -111,6 +128,7 @@ public:
   void init(float reduction_ratio = 36, float max_cmd = 10000.f) {
     setMotorReduction(reduction_ratio);
     setMaxCmd(max_cmd);
+    setMotorTurqueConstant(TorqueConstant_2006_P36*reduction_ratio/36.0f);
   }
 
   void onRx(const uint8_t data[8], uint8_t len) override {
@@ -150,11 +168,11 @@ public:
     raw_speed_ = static_cast<float>(raw_speed) * RPM_2_RAD_PER_SEC;
     speed_ = raw_speed_ / reduction_ratio_;
 
-    // byte 4-5: 实际电流 (int16, 单位: 0.1A, 范围 -2000~2000 = -200~200A)
-    // 电流(A) = value * 0.1
+    // byte 4-5: 实际电流 (int32, 单位: mA, 范围 -10000~10000 = -10000~10000mA)
     int16_t raw_current = (int16_t)((data[4] << 8) | data[5]);
-    raw_torque_ = static_cast<float>(raw_current) * 0.1f;          // A
-    torque_ = raw_torque_ * current_to_torque_ * reduction_ratio_; // 输出端力矩
+    raw_torque_ = raw_current * torque_constant_;
+    current_ = static_cast<float>(raw_current) * 10000.f / 10000.0f; // mA         
+    torque_ = current_ * torque_constant_; // 输出端力矩
 
     // byte 6: 电机温度 (uint8, 单位: °C)
     temperature_ = static_cast<float>(data[6]);
@@ -183,9 +201,7 @@ private:
   int32_t round_cnt_{0};
   float encoder_angle_ratio_ = 8192.0f / 360.0f;
   float encoder_rad_ratio_ = 8192.0f / (2.0f*M_PI);
-
-  // 电流转力矩
-  float current_to_torque_{0.0f}; // M3508: 0.2 Nm/A
+  
 };
 
 class C620Motor : public CanDevice, public MotorBase {
@@ -197,6 +213,7 @@ public:
   void init(float reduction_ratio = 19, float max_cmd = 20000.0f) {
     setMotorReduction(reduction_ratio);
     setMaxCmd(max_cmd);
+    setMotorTurqueConstant(TorqueConstant_3508_P19*reduction_ratio/19.0f);
   }
 
   void onRx(const uint8_t data[8], uint8_t len) override {
@@ -236,11 +253,11 @@ public:
     raw_speed_ = static_cast<float>(raw_speed) * RPM_2_RAD_PER_SEC;
     speed_ = raw_speed_ / reduction_ratio_;
 
-    // byte 4-5: 实际电流
-    // 电流(A) = value * 0.1
+    // byte 4-5: 实际电流 (int32, 单位: mA, 范围 -16384~16384 = -20000~20000mA)
     int16_t raw_current = (int16_t)((data[4] << 8) | data[5]);
-    raw_torque_ = static_cast<float>(raw_current);                 // A
-    torque_ = raw_torque_ * current_to_torque_ * reduction_ratio_; // 输出端力矩
+    raw_torque_ = raw_current * torque_constant_;
+    current_ = static_cast<float>(raw_current) * 20000.0f / 16384.f; // mA         
+    torque_ = current_ * torque_constant_; // 输出端力矩
 
     // byte 6: 电机温度 (uint8, 单位: °C)
     temperature_ = static_cast<float>(data[6]);
@@ -249,19 +266,13 @@ public:
     last_rx_timestamp_s = DWT_GetTimeline_s();
   }
 
-  float cmdTrans() { return cmd_ ; }
+  float cmdTrans() { return cmd_ * 16384.f / 20000.0f; }
 
   bool buildTx(uint8_t data[8], uint8_t &len) override {
     // C610 不单独发帧，返回 false
     len = 0;
     return false;
   }
-
-  // uint32_t getRxTimestamp() const { return last_rx_timestamp_; }
-  
-  // bool isOffline() const { 
-  //   return (HAL_GetTick() - last_rx_timestamp_ > MOTOR_RX_TIMEOUT_MS);
-  // }
 
 private:  
   // 编码器相关
@@ -272,12 +283,6 @@ private:
   int32_t round_cnt_{0};
   float encoder_angle_ratio_ = 8192.0f / 360.0f;
   float encoder_rad_ratio_ = 8192.0f / (2.0f*M_PI);
-
-  // 电流转力矩
-  float current_to_torque_{0.0f}; // M2006: 0.2 Nm/A
-
-  // // 报文时间戳
-  // uint32_t last_rx_timestamp_{0};
 
 };
 
