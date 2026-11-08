@@ -57,3 +57,6 @@ extern C620Motor chassis_motor4;
 
 //上层电机
 extern DM4310Motor arm4310_motor;
+extern C620Motor lift3508_motor;
+extern DJIMotorController lift3508_controller;
+extern LinearAxis lift3508_axis;

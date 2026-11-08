@@ -41,6 +41,8 @@ public:
     virtual void MotorSpeedCtrl_rad_s(float speed){};
     virtual void MotorSinglePosCtrl_rad(float single_pos){};
     virtual void MotorSumPosCtrl_rad(float sum_pos){};
+    virtual void MotorSinglePosCtrl_rad(float single_pos, float T){};
+    virtual void MotorSumPosCtrl_rad(float sum_pos, float T){};
     virtual void MotorMitCtrl(float speed, float pos, float torque, float Kp, float Kd){};
     virtual void MotorPsiCtrl(float pos, float speed, float current){};
 
@@ -93,9 +95,10 @@ public:
 
     float plan_pos_output_;
     float pos_output_;
+    float torque_output_;
 
-    // float dt;
-    // uint32_t DWT_CNT;
+    float dt;
+    uint32_t DWT_CNT;
 
     ControlOptimizer optimizer_;
     ControlOptimizer::Control_Improvement Improvement_{ControlOptimizer::Control_Improvement::NONE};
@@ -145,9 +148,48 @@ public:
     void MotorSumPosCtrl_rad(float sum_pos) override {
         float actual_sum_pos = getMotorSumPos_rad();
         optimizer_.Set(sum_pos,actual_sum_pos);
-        pos_output_ = optimizer_.Run(actual_sum_pos);
+        optimizer_.Run(actual_sum_pos);
+        pos_output_ = optimizer_.GetPosOutput();
 
         MotorSpeedCtrl_rad_s(pos_output_);
+    }
+
+    void MotorSinglePosCtrl_rad(float single_pos, float T) override {
+        float delat = Warp_ToRange(single_pos - getMotorSinglePos_rad(), -M_PI, M_PI);
+        MotorSumPosCtrl_rad(delat + getMotorSumPos_rad(), T);
+    }
+
+    void MotorSumPosCtrl_rad(float sum_pos, float T) override {
+        float actual_sum_pos = getMotorSumPos_rad();
+        optimizer_.Set(sum_pos,actual_sum_pos, T);
+        optimizer_.Run(actual_sum_pos);
+        pos_output_ = optimizer_.GetPosOutput();
+        MotorSpeedCtrl_rad_s(pos_output_);
+    }
+
+    void MotorMitCtrl(float speed, float pos, float torque, float Kp, float Kd) override {
+        const float kt = motor_.getMotorTurqueConstant();
+        if (!std::isfinite(kt) || kt <= 0.0f) {
+            MotorCurrentCtrl(0.0f);
+            return;
+        }
+        torque_output_ = torque + Kp*(pos - getMotorSumPos_rad()) + Kd*(speed - getMotorSpeed_rad());
+        const float current = torque_output_ / kt;
+        MotorCurrentCtrl(std::isfinite(current) ? current : 0.0f);
+    }
+
+    bool isMotorStalled(){
+        dt = DWT_GetDeltaT(&DWT_CNT);
+        if(fabs(getMotorSpeed_rad()) < 0.1f && motor_.getCurrentTorque() > 1.0f){
+            Stall_time = Stall_time + dt;
+            if(Stall_time >= 1.0f){
+                Stall_time = 0.0f;
+                return true;
+            }
+        }else {
+            Stall_time = 0.0f;
+        }
+        return false;
     }
 
     float getMotorSpeed_rad() override {
@@ -156,6 +198,8 @@ public:
 
 private:
     MotorBase& motor_;
+    float Stall_time = 0.0f;
+    bool is_auto_test;
 };
 
 class DM4310MotorController : public MotorControllerBase{
