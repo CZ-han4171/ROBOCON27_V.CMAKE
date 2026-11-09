@@ -11,6 +11,7 @@
  * @note 
  */
 
+#include "bsp_dwt.h"
 #include "chassis_solution.hpp"
 #include "main.h"
 #include "control_task.h"
@@ -54,38 +55,10 @@ pub_chassis_cmd robot_v_aim_cmd{};
 pub_chassis_cmd state_now_cmd{};
 
 //debug begin
-// extern VESCMotor U8_motor3;
-float EncoderSumPos_rad = 0.0f;
-int32_t U8_3_erpm = 0;
-
-// extern RotaryAxis SwerveSteer3;
-// extern DJIMotorController DJI2006_controller3;
-// extern C610Motor DJI2006_motor3;
-// extern BRT38B Encoder_3;
-float Cmd2006 = 0.0f;
-float Speed2006 = 0.0f;
-float SteerPos_Deg_traget = 0.0f;
-float SteerPos_Deg_actual = 0.0f;
-float SteerPos_Deg_traget_last = 0.0f;
-
-// extern PidParam M2006_P38_SpeedPid;
-// extern PidParam M2006_P38_PosPid;
-// extern PidParam U8Lite_SpeedPid;
-
-// extern VESCMotorController U8_controller3;
-// extern RotaryAxis SwerveDrive3;
-
-// PID_t DJI3508_SpeedPid{.Kp = 800.0f,.Ki = 2000.0f,.Kd = 0.01f,.MaxOut = 16000.0f,.DeadBand = 0.0f,.Improve = IMCREATEMENT_OF_OUT};
-float DJI3508_w_rad_aim = 0;
-float DJI3508_pos_deg_aim = 0;
-// float DJI3508_current = 0;
-// float DJI3508_w_rad_return = 0;
-float_t all_time = 0;
 float_t debug_dt;
 uint32_t debug_DWT_CNT;
 CanBus::ClassicPack debug_pack;
-bool is_OnZero = false;
-bool button = false;
+bool DebugCan_button = false;
 extern CanBus fdcan2_bus;
 
 float watch[10];
@@ -163,43 +136,11 @@ void controlTask(void *argument) {
 
         {   
             /////////////////debug begin///////////////////////
-            // debug_dt = DWT_GetDeltaT(&debug_DWT_CNT);
-            // all_time = all_time + debug_dt;
-
-            // // arm3508_Axis.setAxisSpeed_rad_s(DJI3508_w_rad_aim);
-            // EncoderSumPos_rad = Encoder_1.getSumPos_rad();
-
-            // // SteerPos_Deg_traget = M_PI*cosf(all_time*3.0f)*kRadToDeg;
-            // if(rm_cmd.linear_y_ == 0 && rm_cmd.linear_x_ == 0 ){
-            //     SteerPos_Deg_traget = SteerPos_Deg_traget_last;
-            // }else{
-            //     SteerPos_Deg_traget = atan2(rm_cmd.linear_y_, rm_cmd.linear_x_) / kDegToRad;
-            // }
-            // SteerPos_Deg_traget_last = SteerPos_Deg_traget;
-            // SwerveSteer3.setAxisPos_rad(SteerPos_Deg_traget*kDegToRad);
-            // SteerPos_Deg_actual = SwerveSteer3.getAxisSinglePos_rad()*kRadToDeg;
-            // // SwerveSteer1.setAxisSpeed_rad_s(-2.0f*M_PI);
-            // // DJI2006_motor1.setMotorCmd(1000.0f);
-            // Speed2006 = DJI2006_motor3.getCurrentSpeed();
-            // Cmd2006 = DJI2006_motor1.cmdTrans();
-
-            // SwerveDrive3.setAxisSpeed_rad_s(JoyToVelocity(control_rm_cmd.joyRVert, kJoyDeadZoneLeft, 10*M_PI));
-            // U8_controller3.MotorCurrentCtrl(JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, 2000.0f));
-            if(lift3508_controller.isMotorStalled()){
-                is_OnZero = true;
-                lift3508_motor.setMotorPosZero();
-            }
-            if(is_OnZero){
-                lift3508_axis.setAxisPos_meter(0.159f);
-            }else {
-                lift3508_controller.MotorMitCtrl(M_PI, 0.0f, 0.0f, 0.0f, 0.5f);
-            }
-            
-            watch[0] = U8_controller3.getMotorSpeed_rad();
-            // // U8_motor3.setMotorCtrl(U8_3_erpm, VESCMotor::VESC_MODE::SET_ERPM);
-            if(button){
+            debug_dt = DWT_GetDeltaT(&debug_DWT_CNT);
+            lift3508_axis.setAxisPos_meter(0.218f);
+            if(DebugCan_button){
                 fdcan2_bus.addCanMsg(debug_pack);
-                button = !button;
+                DebugCan_button = !DebugCan_button;
             }
             /////////////////debug end///////////////////////
         }
