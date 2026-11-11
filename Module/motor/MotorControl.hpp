@@ -18,6 +18,7 @@
 #include "main.h"
 #include <cmath>
 #include <cstdint>
+#include "optional"
 #include <stdatomic.h>
 #include <stdint.h>
 #include "bsp_dwt.h"
@@ -55,10 +56,10 @@ public:
 
     virtual void MotorCurrentCtrl(float current){};
     virtual void MotorSpeedCtrl_rad_s(float speed){};
-    virtual void MotorSinglePosCtrl_rad(float single_pos){};
-    virtual void MotorSumPosCtrl_rad(float sum_pos){};
-    virtual void MotorSinglePosCtrl_rad(float single_pos, float T){};
-    virtual void MotorSumPosCtrl_rad(float sum_pos, float T){};
+    // virtual void MotorSinglePosCtrl_rad(float single_pos){};
+    // virtual void MotorSumPosCtrl_rad(float sum_pos){};
+    virtual void MotorSinglePosCtrl_rad(float single_pos,std::optional<float> T = std::nullopt){};
+    virtual void MotorSumPosCtrl_rad(float sum_pos,std::optional<float> T = std::nullopt){};
     virtual void MotorMitCtrl(MitParam mit_param){};
     virtual void MotorPsiCtrl(float pos, float speed, float current){};
 
@@ -176,33 +177,16 @@ public:
                 speed);
         MotorCurrentCtrl(pid_speed_output_);
     }
-
-    void MotorSinglePosCtrl_rad(float single_pos) override {
-        if(AutoHome())return;
-
-        float delat = Warp_ToRange(single_pos - getMotorSinglePos_rad(), -M_PI, M_PI);
-        MotorSumPosCtrl_rad(delat + getMotorSumPos_rad());
-    }
-
-    void MotorSumPosCtrl_rad(float sum_pos) override {
-        if(AutoHome())return;
-
-        float actual_sum_pos = getMotorSumPos_rad();
-        optimizer_.Set(sum_pos,actual_sum_pos);
-        optimizer_.Run(actual_sum_pos);
-        pos_output_ = optimizer_.GetPosOutput();
-
-        MotorSpeedCtrl_rad_s(pos_output_);
-    }
-
-    void MotorSinglePosCtrl_rad(float single_pos, float T) override {
+    
+    void MotorSinglePosCtrl_rad(float single_pos,std::optional<float> T = std::nullopt) override {
         if(AutoHome())return;
 
         float delat = Warp_ToRange(single_pos - getMotorSinglePos_rad(), -M_PI, M_PI);
         MotorSumPosCtrl_rad(delat + getMotorSumPos_rad(), T);
+        
     }
 
-    void MotorSumPosCtrl_rad(float sum_pos, float T) override {
+    void MotorSumPosCtrl_rad(float sum_pos,std::optional<float> T = std::nullopt) override {
         if(AutoHome())return;
 
         float actual_sum_pos = getMotorSumPos_rad();
@@ -287,7 +271,7 @@ public:
     void MotorSpeedCtrl_rad_s(float speed) override {
         motor_.speedControl(speed);
     };
-    void MotorSumPosCtrl_rad(float pos) override {
+    void MotorSumPosCtrl_rad(float pos,std::optional<float> T = std::nullopt) override {
         motor_.posWithSpeedControl(pos,pos_pid_.MaxOut);
     };
     void MotorMitCtrl(MitParam mit_param) override {
@@ -329,12 +313,12 @@ public:
         }
     }
 
-    void MotorSinglePosCtrl_rad(float single_pos) override {
+    void MotorSinglePosCtrl_rad(float single_pos,std::optional<float> T = std::nullopt) override {
         float delat = Warp_ToRange(single_pos - getMotorSinglePos_rad(), -M_PI, M_PI);
         MotorSumPosCtrl_rad(delat + getMotorSumPos_rad());
     }
 
-    void MotorSumPosCtrl_rad(float sum_pos) override {
+    void MotorSumPosCtrl_rad(float sum_pos,std::optional<float> T = std::nullopt) override {
         pid_sum_pos_output_ = PID_Calculate(
                 &pos_pid_,
                 getMotorSumPos_rad(), // 输出轴角度(rad)
