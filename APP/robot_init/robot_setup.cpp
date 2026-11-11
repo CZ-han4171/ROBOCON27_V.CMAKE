@@ -64,11 +64,19 @@ void RobotDevices_Init() {
     DJI2006_motor3.init();
     DJI2006_motor4.init();
 
+    //天空块与球的机械臂初始化
     DJI2006_motor_VPleft.init();
     DJI2006_motor_VPright.init();
-    // arm3508_motor.init();
+    DJI3508_motor_DLleft.init();
+    DJI3508_motor_DLright.init();
+    DJI2006_motor_MLleft.init();
+    DJI2006_motor_MLright.init();
+    DJI2006_motor_EClaw.init();
+    DJI2006_motor_EVP.init();
+    DJI2006_motor_Claw.init();
+
     arm4310_motor.init();
-    lift3508_motor.init();
+    
 
     U8_controller1.ConfigSpeedPid(U8Lite_SpeedPid);
     U8_controller2.ConfigSpeedPid(U8Lite_SpeedPid);
@@ -80,5 +88,4 @@ void RobotDevices_Init() {
     DJI2006_controller3.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer::Control_Improvement::SPEEDPLAN);
     DJI2006_controller4.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer::Control_Improvement::SPEEDPLAN);
 
-    lift3508_controller.init(M3508_P19_PlanParam,M3508_P19_SpeedPid,M3508_P19_PosPid,ControlOptimizer::Control_Improvement::NONE);
 }

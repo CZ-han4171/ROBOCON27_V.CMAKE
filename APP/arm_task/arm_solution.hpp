@@ -10,6 +10,6 @@
 
 class Arm_SkyandBall{
     public:
-        // Arm_SkyandBall
+        Arm_SkyandBall();
     private:
 };

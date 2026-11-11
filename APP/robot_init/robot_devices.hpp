@@ -57,14 +57,35 @@ extern C620Motor chassis_motor4;
 
 //上层电机
 extern DM4310Motor arm4310_motor;
+
 extern C610Motor DJI2006_motor_VPleft;
 extern C610Motor DJI2006_motor_VPright;
-
 extern DJIMotorController DJI2006_motor_VPleft_controller;
 extern DJIMotorController DJI2006_motor_VPright_controller;
-
 extern RotaryAxis VPLeft;
 extern RotaryAxis VPRight;
-extern C620Motor lift3508_motor;
-extern DJIMotorController lift3508_controller;
-extern LinearAxis lift3508_axis;
+
+extern C620Motor DJI3508_motor_DLleft;
+extern C620Motor DJI3508_motor_DLright;
+extern DJIMotorController DJI3508_motor_DLleft_controller;
+extern DJIMotorController DJI3508_motor_DLright_controller;
+extern LinearAxis DLLeft;
+extern LinearAxis DLRight;
+
+extern C610Motor DJI2006_motor_MLleft;
+extern C610Motor DJI2006_motor_MLright;
+extern DJIMotorController DJI2006_motor_MLleft_controller;
+extern DJIMotorController DJI2006_motor_MLright_controller;
+extern LinearAxis MLLeft;
+extern LinearAxis MLRight;
+
+extern C610Motor DJI2006_motor_EClaw;
+extern C610Motor DJI2006_motor_EVP;
+extern DJIMotorController DJI2006_motor_EClaw_controller;
+extern DJIMotorController DJI2006_motor_EVP_controller;
+extern RotaryAxis EClaw;
+extern RotaryAxis EVP;
+
+extern C610Motor DJI2006_motor_Claw;
+extern DJIMotorController DJI2006_controller_Claw;
+extern RotaryAxis Claw;

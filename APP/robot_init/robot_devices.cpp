@@ -68,35 +68,34 @@ DM4310Motor arm4310_motor(&fdcan2_bus, 0x301, 0, 0x01, 0,DM4310Motor::PosWithSpe
 //VP电机
 C610Motor DJI2006_motor_VPleft(&fdcan3_bus, 0x205, false, 0x1FF, false);  //从正对吸盘口方向看
 C610Motor DJI2006_motor_VPright(&fdcan3_bus, 0x206, false, 0x1FF, false);
-
 DJIMotorController DJI2006_motor_VPleft_controller(DJI2006_motor_VPleft);
 DJIMotorController DJI2006_motor_VPright_controller(DJI2006_motor_VPright);
-
 RotaryAxis VPLeft(DJI2006_motor_VPleft_controller,1.0f);
 RotaryAxis VPRight(DJI2006_motor_VPright_controller,-1.0f);
 
 //二级抬升
 C620Motor DJI3508_motor_DLleft(&fdcan3_bus, 0x207, false, 0x1FF, false);   //从正对吸盘口方向看
 C620Motor DJI3508_motor_DLright(&fdcan3_bus, 0x208, false, 0x1FF, false);
-
 DJIMotorController DJI2006_motor_DLleft_controller(DJI3508_motor_DLleft);
 DJIMotorController DJI2006_motor_DLright_controller(DJI3508_motor_DLright);
-
 LinearAxis DLLeft(DJI2006_motor_DLleft_controller,(100.0f / M_PI));  //电机转一圈，输出轴转100mm
 LinearAxis DLRight(DJI2006_motor_DLright_controller,(-100.0f / M_PI));
 
 //微动抬升
-C610Motor DJI2006_motor_Lleft(&fdcan1_bus, 0x205, false, 0x1FF, false);  //从正对吸盘口方向看
-C610Motor DJI2006_motor_Lright(&fdcan1_bus, 0x206, false, 0x1FF, false);
-  
+C610Motor DJI2006_motor_MLleft(&fdcan1_bus, 0x205, false, 0x1FF, false);  //从正对吸盘口方向看
+C610Motor DJI2006_motor_MLright(&fdcan1_bus, 0x206, false, 0x1FF, false);
+DJIMotorController DJI2006_motor_MLleft_controller(DJI2006_motor_MLleft);
+DJIMotorController DJI2006_motor_MLright_controller(DJI2006_motor_MLright);
+LinearAxis MLLeft(DJI2006_motor_MLleft_controller,(90.0f / M_PI));  //电机转一圈，输出轴转100mm
+LinearAxis MLRight(DJI2006_motor_MLright_controller,(-90.0f / M_PI));
 //前伸
 C610Motor DJI2006_motor_EClaw(&fdcan1_bus, 0x207, false, 0x1FF, false);  //从正对吸盘口方向看
 C610Motor DJI2006_motor_EVP(&fdcan1_bus, 0x208, false, 0x1FF, false);
-
-// C620Motor arm3508_motor(&fdcan3_bus, 0x206, 0, 0x1FF, 0);
-// DJIMotorController arm3508_controller(arm3508_motor);
-// RotaryAxis arm3508_Axis(arm3508_controller, 1.0f);
-
-C620Motor lift3508_motor(&fdcan2_bus, 0x201, false, 0x200, false);
-DJIMotorController lift3508_controller(lift3508_motor);
-LinearAxis lift3508_axis(lift3508_controller,-2*M_PI/(0.045f*M_PI));
+DJIMotorController DJI2006_motor_EClaw_controller(DJI2006_motor_EClaw);
+DJIMotorController DJI2006_motor_EVP_controller(DJI2006_motor_EVP);
+LinearAxis EClaw(DJI2006_motor_EClaw_controller,36.0f);  //电机转一圈，输出轴转100mm
+LinearAxis EVP(DJI2006_motor_EVP_controller,36.0f);
+//夹爪
+C610Motor DJI2006_motor_Claw(&fdcan2_bus, 0x202, 0, 0x200, 0);
+DJIMotorController DJI2006_controller_Claw(DJI2006_motor_Claw);
+RotaryAxis Claw(DJI2006_controller_Claw, 43.75f);
