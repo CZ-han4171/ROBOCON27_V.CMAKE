@@ -206,15 +206,15 @@ void controlTask(void *argument) {
 
             // SwerveDrive3.setAxisSpeed_rad_s(JoyToVelocity(control_rm_cmd.joyRVert, kJoyDeadZoneLeft, 10*M_PI));
             // U8_controller3.MotorCurrentCtrl(JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, 2000.0f));
-            if(lift3508_controller.isMotorStalled()){
-                is_OnZero = true;
-                lift3508_motor.setMotorPosZero();
-            }
-            if(is_OnZero){
-                lift3508_axis.setAxisPos_meter(0.159f);
-            }else {
-                lift3508_controller.MotorMitCtrl(M_PI, 0.0f, 0.0f, 0.0f, 0.5f);
-            }
+            // if(lift3508_controller.isMotorStalled()){
+            //     is_OnZero = true;
+            //     lift3508_motor.setMotorPosZero();
+            // }
+            // if(is_OnZero){
+            //     lift3508_axis.setAxisPos_meter(0.159f);
+            // }else {
+            //     lift3508_controller.MotorMitCtrl(M_PI, 0.0f, 0.0f, 0.0f, 0.5f);
+            // }
             
             watch[0] = U8_controller3.getMotorSpeed_rad();
             // // U8_motor3.setMotorCtrl(U8_3_erpm, VESCMotor::VESC_MODE::SET_ERPM);
