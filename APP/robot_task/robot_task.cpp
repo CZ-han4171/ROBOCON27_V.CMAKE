@@ -43,7 +43,7 @@ extern osThreadId_t ControlTaskHandle;
 extern osThreadId_t usbcdcProcessTaskHandle;
 extern osThreadId_t usbcdcSendTaskHandle;
 extern osThreadId_t DebugSerialTaskHandle;
-extern osThreadId_t VPupperTaskHandle;
+extern osThreadId_t VPTaskHandle;
 
 void osTaskInit(void) {
   const osThreadAttr_t CAN1_SendTaskHandle_attributes = {
@@ -161,11 +161,11 @@ void osTaskInit(void) {
   uart3SendTaskHandle =
       osThreadNew(uart3SendTask, NULL, &Uart3SendTaskHandle_attributes);
 
-  const osThreadAttr_t VPupperTaskHandle_attributes = {
-      .name = "VPupper_TaskHandle",
+  const osThreadAttr_t VPTaskHandle_attributes = {
+      .name = "VP_TaskHandle",
       .stack_size = 256 * 4,
       .priority = (osPriority_t)osPriorityNormal1,
   };
-  VPupperTaskHandle =   
-      osThreadNew(VPupperTask, NULL, &VPupperTaskHandle_attributes);
+  VPTaskHandle =   
+      osThreadNew(VPTask, NULL, &VPTaskHandle_attributes);
 }

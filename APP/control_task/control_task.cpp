@@ -40,8 +40,8 @@ osThreadId_t ControlTaskHandle;
 TypedTopicPublisher<pub_chassis_cmd> chassis_data_pub("chassis_cmd");
 pub_chassis_cmd rm_cmd{};
 
-TypedTopicPublisher<pub_VPupper_cmd> VPupper_data_pub("VPupper_cmd");
-pub_VPupper_cmd VPupper_cmd{};
+TypedTopicPublisher<pub_VP_cmd> VP_data_pub("VP_cmd");
+pub_VP_cmd VP_cmd{};
 
 // static TypedTopicPublisher<QR_code_cmd_t> qr_code_cmd_pub("qr_code_cmd");   
 // static QR_code_cmd_t qr_code_cmd{};
@@ -172,15 +172,16 @@ void controlTask(void *argument) {
         vpUpdateTime = now;
         const bool remoteFresh = (now - rcUpdateTime <= kRemoteInputTimeout);
         if (remoteFresh && control_rm_cmd.swA == RM_2_POS_SW_State_t::DOWN) {
-            VPupper_cmd.pitch = std::clamp(
-                VPupper_cmd.pitch + JoyToVelocity(control_rm_cmd.joyLVert,
+            VP_cmd.pitch = std::clamp(
+                VP_cmd.pitch + JoyToVelocity(control_rm_cmd.joyLVert,
                                                    kJoyDeadZoneLeft, 30.0f) * vpDt,
                 0.0f, 180.0f);
-            VPupper_cmd.yaw = std::clamp(
-                VPupper_cmd.yaw + JoyToVelocity(control_rm_cmd.joyLHori,
+            VP_cmd.yaw = std::clamp(
+                VP_cmd.yaw + JoyToVelocity(control_rm_cmd.joyLHori,
                                                  kJoyDeadZoneLeft, 30.0f) * vpDt,
                 0.0f, 360.0f);
-            VPupper_data_pub.Publish(VPupper_cmd);
+            VP_cmd.common_T_s = 0.01f;
+            VP_data_pub.Publish(VP_cmd);
         }
         {   
             /////////////////debug begin///////////////////////

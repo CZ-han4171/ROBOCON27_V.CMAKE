@@ -7,4 +7,4 @@
 #include "topics.hpp"
 #include "topic_pool.h"
 
-void VPupperTask(void *argument);
+void VPTask(void *argument);
