@@ -18,6 +18,7 @@
 #include "main.h"
 #include <cmath>
 #include <cstdint>
+#include "optional"
 #include <stdatomic.h>
 #include <stdint.h>
 #include "bsp_dwt.h"
@@ -26,6 +27,8 @@
 #include "tool.hpp"
 #include "topic_pool.h"
 #include <functional>
+
+
 
 class ControlOptimizer {
 public:
@@ -63,28 +66,20 @@ public:
     void ConfigPlanParam(const PlanParam &plan_param){
         plan_param_ = plan_param;
     }
-    // void Init(float actual_pos){
-    //     traj_param_.ref = actual_pos;
-    // }
-    void Set(float traget_pos, float actual_pos){
+    void Set(float traget_pos, float actual_pos,
+            std::optional<float> T = std::nullopt){
         traj_param_.traget = traget_pos;
-        traj_param_.auto_calculate_T = true;
         if(fabs(traj_param_.traget - traj_param_last_.traget) >= 0.001f ){
             is_finish = false;
             traj_param_.start = actual_pos;
             traj_param_.ref = actual_pos;
             traj_param_.t = 0.0f;
-        };
-    }
-    void Set(float traget_pos, float actual_pos, float T){
-        traj_param_.traget = traget_pos;
-        traj_param_.auto_calculate_T = false;
-        if(fabs(traj_param_.traget - traj_param_last_.traget) >= 0.001f ){
-            is_finish = false;
-            traj_param_.start = actual_pos;
-            traj_param_.ref = actual_pos;
-            traj_param_.t = 0.0f;
-            traj_param_.T = T;
+            if(T.has_value()){
+                traj_param_.auto_calculate_T = false;
+                traj_param_.T = *T;
+            }else {
+                traj_param_.auto_calculate_T = true;
+            }
         };
     }
     void Run(float actual_pos){

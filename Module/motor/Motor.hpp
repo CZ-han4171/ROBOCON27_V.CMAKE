@@ -26,6 +26,7 @@
 #include <math.h>
 #include <stdint.h>
 #include "bsp_dwt.h"
+#include "tool.hpp"
 
 #define RAD_2_DEGREE 57.2957795f       // 180/pi  弧度转换成角度
 #define DEGREE_2_RAD 0.01745329252f    // pi/180  角度转化成弧度
@@ -56,8 +57,8 @@ public:
   float getMotorReduction(){ return reduction_ratio_; }
   float getMotorTurqueConstant(){ return torque_constant_; }
 
-  float getCurrentSinglePos(void) const { return single_pos_ - single_pos_zero; }
-  float getCurrentSumPos(void) const { return sum_pos_ - sum_pos_zero; }
+  float getCurrentSinglePos(void) const { return single_pos_; }
+  float getCurrentSumPos(void) const { return sum_pos_; }
   float getCurrentSpeed(void) const { return speed_; }
   float getCurrentTorque(void) const { return torque_; }
   float getCurrentTemperature(void) const { return temperature_; }
@@ -67,9 +68,8 @@ public:
   float getRawCurrentSpeed(void) const { return raw_speed_; }
   float getRawCurrentTorque(void) const { return raw_torque_; }
 
-  void setMotorPosZero(){
-    sum_pos_zero = sum_pos_;
-    single_pos_zero = single_pos_;
+  void ResetMotorPos(float reset_pos){
+    sum_pos_zero = raw_sum_pos_/reduction_ratio_ - reset_pos;
   }
 
   virtual bool isOffline() { return (DWT_GetTimeline_s() - last_rx_timestamp_s > MOTOR_RX_TIMEOUT_S);}
@@ -104,7 +104,6 @@ public:
   float current_{0}; //电流 mA
 
   float sum_pos_zero{0};
-  float single_pos_zero{0};
 };
 
 enum DJIMotorCanGroup {
@@ -152,11 +151,11 @@ public:
       raw_sum_pos_ = static_cast<float>(total_encoder) / encoder_rad_ratio_;
 
       // 输出端位置（考虑减速比）
-      single_pos_ = raw_single_pos_ / reduction_ratio_;
-      sum_pos_ = raw_sum_pos_ / reduction_ratio_;
-      single_pos_ = std::fmod(sum_pos_, 2*M_PI);
-      if (single_pos_ < 0.0f)
-        single_pos_ += 2*M_PI;
+      sum_pos_ = raw_sum_pos_/reduction_ratio_ - sum_pos_zero ;
+      single_pos_ = Warp_ToRange(sum_pos_, -M_PI, M_PI);
+      // single_pos_ = std::fmod(sum_pos_, 2*M_PI);
+      // if (single_pos_ < 0.0f)
+      //   single_pos_ += 2*M_PI;
     } else {
       encoder_offset_ = encoder_;
       is_encoder_init = true;
@@ -237,11 +236,11 @@ public:
       raw_sum_pos_ = static_cast<float>(total_encoder) / encoder_rad_ratio_;
 
       // 输出端位置（考虑减速比）
-      single_pos_ = raw_single_pos_ / reduction_ratio_;
-      sum_pos_ = raw_sum_pos_ / reduction_ratio_;
-      single_pos_ = std::fmod(sum_pos_, 2*M_PI);
-      if (single_pos_ < 0.0f)
-        single_pos_ += 360.0f;
+      sum_pos_ = raw_sum_pos_/reduction_ratio_ - sum_pos_zero ;
+      single_pos_ = Warp_ToRange(sum_pos_, -M_PI, M_PI);
+      // single_pos_ = std::fmod(sum_pos_, 2*M_PI);
+      // if (single_pos_ < 0.0f)
+      //   single_pos_ += 2*M_PI;
     } else {
       encoder_offset_ = encoder_;
       is_encoder_init = true;
