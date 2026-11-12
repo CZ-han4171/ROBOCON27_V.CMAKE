@@ -29,6 +29,7 @@ public:
         : motors_{&VPmotor_Left, &VPmotor_Right} {
         for (auto &optimizer : optimizers_) {
             optimizer.ConfigImprovement(control_improvement);
+            optimizer.traj_param_.auto_calculate_T = false;
         }
         controlmode_ = controlmode;
     }
@@ -48,7 +49,7 @@ public:
         PlanCommand();
     }
 
-    void setTrajectory(float pitch, float yaw, float common_duration_s = 0.01f)
+    void setTrajectory(float pitch, float yaw, std::optional<float> common_duration_s = std::nullopt)
     {
         const float pitch_rad = std::clamp(pitch, kPitchMin, kPitchMax) * kDegToRad;
         const float yaw_rad = std::clamp(yaw, kYawMin, kYawMax) * kDegToRad;
@@ -57,12 +58,18 @@ public:
         target_VP_rad_[kYaw] = yaw_rad;
 
         getVP_Pos();
-
-        common_T_s_ = common_duration_s;
-        
-        for (size_t i = 0; i < kVPCount; ++i) {
+        // caculationcommonmintimes();
+        // if(common_duration_s.has_value() && *common_duration_s > common_T_s_){ }
+        if(common_duration_s.has_value()){
+            for (size_t i = 0; i < kVPCount; ++i) {
+                optimizers_[i].Set(target_VP_rad_[i], actual_VP_rad_[i], *common_duration_s);
+            }
+        }    
+        else{
+            for (size_t i = 0; i < kVPCount; ++i) {
                 optimizers_[i].Set(target_VP_rad_[i], actual_VP_rad_[i], common_T_s_);
-        }
+            }
+        }   
     }
 
     void PlanSpeedSolution()
@@ -128,12 +135,30 @@ public:
     {
         controlmode_ = controlmode;
         for (size_t i = 0; i < kVPCount; ++i) {
-            if(optimizers_[i].Improvement_ != control_improvement);
-            optimizers_[i].ConfigImprovement(control_improvement); 
-            optimizers_[i].traj_param_last_.traget += 1.0f; //重置 
+            if(optimizers_[i].Improvement_ != control_improvement) {
+                optimizers_[i].ConfigImprovement(control_improvement); 
+                optimizers_[i].traj_param_last_.traget += 1.0f; //重置 
+            }
         }
     }
 
+    // void caculationcommonmintimes()
+    // {
+    //     switch(optimizers_[kPitch].Improvement_)
+    //     {
+    //         case ControlOptimizer::Control_Improvement::COSPLAN:
+    //             common_T_s_ = std::max(fabs((target_VP_rad_[kPitch] - actual_VP_rad_[kPitch])*M_PI*sinf(M_PI*0.5f)/(2.0f*optimizers_[kPitch].plan_param_.w_Max)), 
+    //                                     fabs((target_VP_rad_[kYaw] - actual_VP_rad_[kYaw])*M_PI*sinf(M_PI*0.5f)/(2.0f*optimizers_[kYaw].plan_param_.w_Max)));
+    //             break;
+    //         case ControlOptimizer::Control_Improvement::POLYNOMIAL:
+    //             common_T_s_ = std::max(fabs((target_VP_rad_[kPitch] - actual_VP_rad_[kPitch])*( 30.0f*0.5f*0.5f - 60.0f*0.5f*0.5f*0.5f + 30.0f*0.5f*0.5f*0.5f*0.5f )/optimizers_[kPitch].plan_param_.w_Max), 
+    //                                 fabs((target_VP_rad_[kYaw] - actual_VP_rad_[kYaw])*( 30.0f*0.5f*0.5f - 60.0f*0.5f*0.5f*0.5f + 30.0f*0.5f*0.5f*0.5f*0.5f )/optimizers_[kYaw].plan_param_.w_Max));
+    //             break;
+    //         default:
+    //             common_T_s_ = 0.01f;
+    //             break;
+    //     }
+    // }
 private:
     static void applyPidParam(PID_t &pid, const PidParam &param) {
         pid = {};
@@ -167,6 +192,3 @@ private:
     float common_T_s_ = 0.01f;
     ContorlMode controlmode_ = SPEEDPLAN;
 };
-
-
-
