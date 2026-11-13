@@ -28,16 +28,16 @@
 
 PidParam M2006_P38_SpeedPid(3000.0f, 16600.0f, 0.0f, 10000.0f, 0.0f, IMCREATEMENT_OF_OUT);
 PidParam M2006_P38_PosPid(3.0f,0.4f,0.01f,5*M_PI,0.5f*kDegToRad,NONE);
-ControlOptimizer::PlanParam M2006_P38_PlanParam(M_PI,M_PI,10*M_PI);
+ControlOptimizer<1>::PlanParam M2006_P38_PlanParam(M_PI,M_PI,10*M_PI);
 PidParam M3508_P19_SpeedPid(4000.0f, 8600.0f, 0.0f, 16000.0f, 0.0f, IMCREATEMENT_OF_OUT);
 PidParam M3508_P19_PosPid(3.0f,0.4f,0.01f,2*M_PI,0.5f*kDegToRad,NONE);
-ControlOptimizer::PlanParam M3508_P19_PlanParam(4.0f*M_PI,4.0f*M_PI,10*M_PI);
+ControlOptimizer<1>::PlanParam M3508_P19_PlanParam(4.0f*M_PI,4.0f*M_PI,10*M_PI);
 // PidParam U8Lite_SpeedPid(0.0f,3000.0f,0.0f,30000.0f,0.0f,IMCREATEMENT_OF_OUT);
 // PidParam U8Lite_SpeedPid(500.0f,1.0f,0.0f,30000.0f,0.0f,NONE);
 PidParam U8Lite_SpeedPid(100.0f,200.0f,0.0f,30000.0f,0.0f,IMCREATEMENT_OF_OUT);
 
 
-ControlOptimizer::PlanParam SwerveSteer_M2006_PlanParam(100.0f*M_PI,100.0f*M_PI, 10.0f*M_PI);
+ControlOptimizer<1>::PlanParam SwerveSteer_M2006_PlanParam(100.0f*M_PI,100.0f*M_PI, 10.0f*M_PI);
 PidParam SwerveSteer_M2006_SpeedPid(3000.0f, 16600.0f, 0.0f, 10000.0f, 0.0f, IMCREATEMENT_OF_OUT);
 PidParam SwerveSteer_M2006_PosPid(3.0f,0.8f,0.0f,25.0f*M_PI,0.05f*kDegToRad,NONE);
 
@@ -76,12 +76,12 @@ void RobotDevices_Init() {
     U8_controller3.ConfigSpeedPid(U8Lite_SpeedPid);
     U8_controller4.ConfigSpeedPid(U8Lite_SpeedPid);
 
-    DJI2006_controller1.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer::Control_Improvement::SPEEDPLAN);
-    DJI2006_controller2.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer::Control_Improvement::SPEEDPLAN);
-    DJI2006_controller3.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer::Control_Improvement::SPEEDPLAN);
-    DJI2006_controller4.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer::Control_Improvement::SPEEDPLAN);
+    DJI2006_controller1.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer<1>::Control_Improvement::SPEEDPLAN);
+    DJI2006_controller2.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer<1>::Control_Improvement::SPEEDPLAN);
+    DJI2006_controller3.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer<1>::Control_Improvement::SPEEDPLAN);
+    DJI2006_controller4.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer<1>::Control_Improvement::SPEEDPLAN);
 
     lift3508_controller.init(M3508_P19_PlanParam,M3508_P19_SpeedPid,
-            M3508_P19_PosPid,ControlOptimizer::Control_Improvement::SPEEDPLAN,
+            M3508_P19_PosPid,ControlOptimizer<1>::Control_Improvement::SPEEDPLAN,
             AutoHomeParam_Positive,0.0f);
 }
