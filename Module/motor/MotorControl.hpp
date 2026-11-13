@@ -73,10 +73,7 @@ public:
     void ConfigSinglePosSource(std::function<float()> func){ getFeedBackSinglePos_rad = func; }
     void ConfigFeedBackRatio(float ratio){ feedback_rad_per_motor_rad_ = ratio; }
 
-    void setMaxPosSpeed_rad_s(float MaxSpeed_rad_s){
-        optimizer_.plan_param_.w_Max = MaxSpeed_rad_s;
-    }
-    void ConfigControlImprovement(const ControlOptimizer::Control_Improvement Improvement){
+    void ConfigControlImprovement(const ControlOptimizer<1>::Control_Improvement Improvement){
         optimizer_.ConfigImprovement(Improvement);
     }
     void ConfigSpeedPid(const PidParam &param){
@@ -84,7 +81,7 @@ public:
     }
     void ConfigPosPid(const PidParam &param){
         applyPidParam(pos_pid_, param);
-        applyPidParam(optimizer_.pos_pid_, param);
+        optimizer_.ConfigPid(pos_pid_);
     }
     static void applyPidParam(PID_t &pid, const PidParam &param) {
         pid = {};
@@ -96,7 +93,7 @@ public:
         pid.Improve = param.improve;
         PID_Init(&pid);
     }
-    void applyPlanParam(const ControlOptimizer::PlanParam &plan_param){
+    void applyPlanParam(const ControlOptimizer<1>::PlanParam &plan_param){
         optimizer_.ConfigPlanParam(plan_param);
     }
 
@@ -123,8 +120,8 @@ public:
     float home_pos_{0.0f};
     MitParam AutoHomeParam_;
 
-    ControlOptimizer optimizer_;
-    ControlOptimizer::Control_Improvement Improvement_{ControlOptimizer::Control_Improvement::NONE};
+    ControlOptimizer<1> optimizer_;
+    ControlOptimizer<1>::Control_Improvement Improvement_{ControlOptimizer<1>::Control_Improvement::NONE};
     // PlanParam plan_param_;
 };
 
@@ -142,16 +139,16 @@ public:
         feedback_rad_per_motor_rad_ = ratio;
     }
 
-    void init(const ControlOptimizer::PlanParam &plan_param, const PidParam &speed_param, 
-              const PidParam &pos_param, const ControlOptimizer::Control_Improvement &improvement){
+    void init(const ControlOptimizer<1>::PlanParam &plan_param, const PidParam &speed_param, 
+              const PidParam &pos_param, const ControlOptimizer<1>::Control_Improvement &improvement){
         ConfigSpeedPid(speed_param);
         ConfigPosPid(pos_param);
         applyPlanParam(plan_param);
         ConfigControlImprovement(improvement);
     }
 
-    void init(const ControlOptimizer::PlanParam &plan_param, const PidParam &speed_param, 
-              const PidParam &pos_param, const ControlOptimizer::Control_Improvement &improvement,
+    void init(const ControlOptimizer<1>::PlanParam &plan_param, const PidParam &speed_param, 
+              const PidParam &pos_param, const ControlOptimizer<1>::Control_Improvement &improvement,
               const MitParam &mit_homeparam, const float &HomePos){
         ConfigSpeedPid(speed_param);
         ConfigPosPid(pos_param);
@@ -191,8 +188,8 @@ public:
 
         float actual_sum_pos = getMotorSumPos_rad();
         optimizer_.Set(sum_pos,actual_sum_pos, T);
-        optimizer_.Run(actual_sum_pos);
-        pos_output_ = optimizer_.GetPosOutput();
+        optimizer_.Run();
+        pos_output_ = optimizer_.GetSpeedOutput();
         MotorSpeedCtrl_rad_s(pos_output_);
     }
 
