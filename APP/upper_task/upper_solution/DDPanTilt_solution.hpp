@@ -23,9 +23,9 @@ class DD_PanTilt{
 public:
     enum MotorIndex : size_t { kLeft = 0, kRight = 1, kMotorCount = 2 };
     enum VPIndex : size_t { kPitch = 0, kYaw = 1, kVPCount = 2 };
-    enum ContorlMode : size_t { INTERPOLATION = 0, SPEEDPLAN = 1};
+    enum ControlMode : size_t { SPEEDPLAN = 0, INTERPOLATION = 1};
 
-    DD_PanTilt(RotaryAxis &VPmotor_Left, RotaryAxis &VPmotor_Right, ContorlMode controlmode = SPEEDPLAN, ControlOptimizer::Control_Improvement control_improvement = ControlOptimizer::Control_Improvement::COSPLAN)
+    DD_PanTilt(RotaryAxis &VPmotor_Left, RotaryAxis &VPmotor_Right, ControlMode controlmode = SPEEDPLAN, ControlOptimizer::Control_Improvement control_improvement = ControlOptimizer::Control_Improvement::COSPLAN)
         : motors_{&VPmotor_Left, &VPmotor_Right} {
         for (auto &optimizer : optimizers_) {
             optimizer.ConfigImprovement(control_improvement);
@@ -74,6 +74,7 @@ public:
 
     void PlanSpeedSolution()
     {
+        getVP_Pos();
         for (size_t i = 0; i < kVPCount; ++i) {
             
             optimizers_[i].Run(actual_VP_rad_[i]);
@@ -86,7 +87,9 @@ public:
             - kYawGearRatio * output_VP_speed_rad_s_[kYaw];
     }
 
-    void PlanInterpolationSolution() {
+    void PlanInterpolationSolution() 
+    {
+        getVP_Pos();
         for (size_t i = 0; i < kVPCount; ++i) {
             optimizers_[i].Run(actual_VP_rad_[i]);
             output_VP_pos_rad_[i] = optimizers_[i].GetPosRef();           
@@ -131,7 +134,7 @@ public:
         }
     }
     
-    void ConfigControlPlan(ContorlMode controlmode = SPEEDPLAN, ControlOptimizer::Control_Improvement control_improvement = ControlOptimizer::Control_Improvement::COSPLAN)
+    void ConfigControlPlan(ControlMode controlmode = SPEEDPLAN, ControlOptimizer::Control_Improvement control_improvement = ControlOptimizer::Control_Improvement::COSPLAN)
     {
         controlmode_ = controlmode;
         for (size_t i = 0; i < kVPCount; ++i) {
@@ -190,5 +193,5 @@ private:
     bool isFetched_  = false;
     float dt_s_;  // 规划周期
     float common_T_s_ = 0.01f;
-    ContorlMode controlmode_ = SPEEDPLAN;
+    ControlMode controlmode_ = SPEEDPLAN;
 };

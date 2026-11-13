@@ -1,4 +1,5 @@
 #include "DDPanTilt_solution.hpp"
+#include "ArmforSkyandBall_solution.hpp"
 #include "upper_task.hpp"
 #include "robot_devices.hpp"
 
