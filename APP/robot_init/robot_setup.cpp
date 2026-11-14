@@ -70,6 +70,7 @@ void RobotDevices_Init() {
 
     arm4310_motor.init();
     lift3508_motor.init();
+    can4_motor1.init();
 
     U8_controller1.ConfigSpeedPid(U8Lite_SpeedPid);
     U8_controller2.ConfigSpeedPid(U8Lite_SpeedPid);

@@ -60,3 +60,7 @@ extern DM4310Motor arm4310_motor;
 extern C620Motor lift3508_motor;
 extern DJIMotorController lift3508_controller;
 extern LinearAxis lift3508_axis;
+
+// CAN4（SPI + MCP2518FD）上的电机：manager 传 nullptr，
+// 由 SpiCanApp::can4Attach() 挂到 g_can4Bus
+extern C610Motor can4_motor1;

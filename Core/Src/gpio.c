@@ -56,6 +56,9 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(CS_CAN_GPIO_Port, CS_CAN_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOG, PUMP_PICK_Pin|VALVE_CLAW_Pin|GPIO_RESERVED3_Pin|PUMP_LIFT_Pin
                           |VALVE_PICK_Pin, GPIO_PIN_RESET);
 
@@ -70,6 +73,19 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : INT_CAN_Pin */
+  GPIO_InitStruct.Pin = INT_CAN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(INT_CAN_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : CS_CAN_Pin */
+  GPIO_InitStruct.Pin = CS_CAN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  HAL_GPIO_Init(CS_CAN_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pins : PUMP_PICK_Pin VALVE_CLAW_Pin GPIO_RESERVED3_Pin VALVE_LIFT_Pin
                            PUMP_LIFT_Pin VALVE_PICK_Pin */
   GPIO_InitStruct.Pin = PUMP_PICK_Pin|VALVE_CLAW_Pin|GPIO_RESERVED3_Pin|VALVE_LIFT_Pin
@@ -78,6 +94,10 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 }
 

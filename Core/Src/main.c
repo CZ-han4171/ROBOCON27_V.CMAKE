@@ -22,6 +22,7 @@
 #include "cmsis_os2.h"
 #include "dma.h"
 #include "fdcan.h"
+#include "spi.h"
 #include "tim.h"
 #include "usart.h"
 #include "usb_device.h"
@@ -116,6 +117,7 @@ int main(void)
   MX_UART8_Init();
   MX_TIM14_Init();
   MX_TIM4_Init();
+  MX_SPI4_Init();
   /* USER CODE BEGIN 2 */
   //MX_USB_DEVICE_Init();//要放前面，因为usb设备调用的HAL tick 来自 TIM6 中断，而 TIM6 中断优先级较低，如果放在后面，可能会因为任务启动阶段有临界区/屏蔽中断导致tick不走进而导致 USB 设备初始化失败。
   osKernelInitialize();  /* Call init function for freertos objects (in cmsis_os2.c) */

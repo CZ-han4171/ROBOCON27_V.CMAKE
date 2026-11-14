@@ -1,0 +1,14 @@
+si SWD
+speed 4000
+connect
+halt
+mem32 0x2000019c 1
+mem32 0x200006bc 1
+mem32 0x200006b8 1
+g
+sleep 1000
+halt
+mem32 0x2000019c 1
+mem32 0x200006bc 1
+mem32 0x200006b8 1
+q
