@@ -24,6 +24,7 @@
 #include "com_config.hpp"
 #include "control_task.h"
 #include "debug_task.h"
+#include "spi_can_config.hpp"
 
 /* module层接口头文件 */
 
@@ -31,6 +32,7 @@
 extern osThreadId_t CAN1_Send_TaskHandle;
 extern osThreadId_t CAN2_Send_TaskHandle;
 extern osThreadId_t CAN3_Send_TaskHandle;
+extern osThreadId_t CAN4_Send_TaskHandle;
 extern osThreadId_t uart3SendTaskHandle;
 extern osThreadId_t uart2ProcessTaskHandle;
 extern osThreadId_t uart3ProcessTaskHandle;
@@ -68,6 +70,14 @@ void osTaskInit(void) {
   };
   CAN3_Send_TaskHandle =
       osThreadNew(can3SendTask, NULL, &CAN3_SendTaskHandle_attributes);
+
+  // 第 4 路 CAN FD（SPI 转 MCP2518FD），5ms 周期 + INT 唤醒
+  const osThreadAttr_t CAN4_SendTaskHandle_attributes = {
+      .name = "CAN4_Send_TaskHandle",
+      .stack_size = 384 * 4,
+      .priority = (osPriority_t)osPriorityNormal,
+  };
+  CAN4_Send_TaskHandle = osThreadNew(can4SendTask, NULL, &CAN4_SendTaskHandle_attributes);
 
   const osThreadAttr_t DebugTaskHandle_attributes = {
       .name = "Debug_TaskHandle",

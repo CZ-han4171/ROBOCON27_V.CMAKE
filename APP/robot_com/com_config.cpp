@@ -50,10 +50,12 @@
 #include <stdio.h>
 
 #include "robot_devices.hpp"
+#include "spi_can_config.hpp"
 
 osThreadId_t CAN1_Send_TaskHandle;
 osThreadId_t CAN2_Send_TaskHandle;
 osThreadId_t CAN3_Send_TaskHandle;
+osThreadId_t CAN4_Send_TaskHandle;
 osThreadId_t uart2ProcessTaskHandle;
 osThreadId_t uart3ProcessTaskHandle;
 osThreadId_t uart3SendTaskHandle;
@@ -239,6 +241,9 @@ uint8_t comServiceInit() {
   // fdcan3_bus.registerDevice(&arm3508_motor);
   fdcan2_bus.registerDevice(&arm4310_motor);
   fdcan2_bus.registerDevice(&lift3508_motor);
+
+  // CAN4（SPI + MCP2518FD）：设备走独立的 g_can4Bus，不经过 CanBus
+  SpiCanApp::can4Attach(&can4_motor1);
 
   // 串口外设
   uart2_rx_semphore = osSemaphoreNew(1, 0, NULL);

@@ -67,3 +67,6 @@ DM4310Motor arm4310_motor(&fdcan2_bus, 0x301, 0, 0x01, 0,DM4310Motor::PosWithSpe
 C620Motor lift3508_motor(&fdcan2_bus, 0x201, false, 0x200, false);
 DJIMotorController lift3508_controller(lift3508_motor);
 LinearAxis lift3508_axis(lift3508_controller,-2*M_PI/(0.045f*M_PI));
+
+// CAN4（SPI + MCP2518FD）上的电机：不走 CanBus，manager 传 nullptr
+C610Motor can4_motor1(nullptr, 0x205, 0, 0x1FF, 0);
