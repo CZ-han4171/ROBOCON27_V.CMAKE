@@ -2,8 +2,8 @@
  * @file ControlOptimizer.hpp
  * @author CZhan
  * @brief
- * @version 1.0
- * @date 2026-11-1
+ * @version 2.0
+ * @date 2026-11-13
  *
  * @copyright
  *
@@ -29,16 +29,16 @@
 #include "topic_pool.h"
 #include <functional>
 
-template <std::size_t dimensions>
+template <std::size_t dimensions> // 模板，使用的时候需要使用CotrolOptimizer<dimensions(你想要的轴数)>来定义
 class ControlOptimizer {
 public:
-    using ValueType = std::conditional_t<
+    using ValueType = std::conditional_t< // 当dimensions为1的时候，ValueType等效于float，否则等效于std::array<float, dimensions>
         dimensions == 1,
         float,
         std::array<float, dimensions>
     >;
     
-    enum class Control_Improvement{
+    enum class Control_Improvement{ // 目前只支持这种优化方式，后面还可以拓展
         NONE,
         SPEEDPLAN,
         COSPLAN,
@@ -67,6 +67,8 @@ public:
         float delat_now_start(){ return now - start; }
     };
 
+
+/*——————————————————————————————配置函数———————————————————————————————————*/
     void ConfigImprovement( Control_Improvement Improvement){
         Improvement_ = Improvement;
     }
@@ -79,32 +81,29 @@ public:
             track_lateral_pid_[i] = pid_in;
         }
     }
-    bool is_Change(std::array<float, dimensions> now, std::array<float, dimensions> last){
+
+/*——————————————————————————————用于判断的函数———————————————————————————————*/
+    bool is_Change(std::array<float, dimensions> now, std::array<float, dimensions> last){ // 判断目标点时候改变
         for(std::size_t i = 0; i < dimensions; ++i){
             if(fabs(now[i] - last[i]) >= 0.001f)return true;
         }
         return false;
     }
-    bool is_lateral_finish(std::array<float, dimensions> correction){
+    bool is_lateral_finish(std::array<float, dimensions> correction){ // 判断横向误差是否都到位，不过实际上没有调用
         for(std::size_t i = 0; i < dimensions; ++i){
             if(fabs(correction[i]) >= 0.01f)return false;
         }
         return true;
     }
-    void init(std::array<float, dimensions> &traget_last){
-        if(!is_init){
-            for(std::size_t i = 0; i < dimensions; ++i){
-                traget_last[i] = traj_param_components_[i].now;
-            }
-            is_init = !is_init;
-        }
-    }
-    void Set(ValueType traget_pos, ValueType actual_pos,
-            std::optional<float> T = std::nullopt){
+
+/*————————————————————————————————轨迹参数入口，调用的时候放第一个—————————————————————————————————————*/
+    void Set(ValueType traget_pos, ValueType actual_pos, // 当只有一个轴的时候，直接传入float，否则传入数组
+            std::optional<float> T = std::nullopt){      // T有一个默认值，当外部不传入T的时候根据速度上线计算所需时间
         std::array<float, dimensions> traget_now{0};
         std::array<float, dimensions> traget_last{0};
-        float magnitude_tmp;
+        float magnitude_tmp;                             //模长，也就是所有轴的差值平方和开根
         
+        /*============处理传入参数，配置给类里面的变量和数组============*/
         if constexpr (dimensions == 1) {
             traj_param_components_[0].traget = traget_pos;
             traj_param_components_[0].now = actual_pos;
@@ -122,8 +121,9 @@ public:
             }
             magnitude_tmp = sqrtf(sum_sq);
         }
-        // if(magnitude_tmp < 0.001f)magnitude_tmp = 0.001f;
 
+
+        /*=============第一次进入会固定进入，进行轨迹的初始化============*/
         if(!is_init || is_Change(traget_now,traget_last)){
             is_init = true;
             is_point_hold_ = magnitude_tmp < 0.001f;
@@ -131,11 +131,11 @@ public:
             for(std::size_t i = 0; i < dimensions; ++i){
                 traj_param_components_[i].start = traj_param_components_[i].now;
                 traj_param_components_[i].ref = traj_param_components_[i].now;
-                unit_direction_[i] = is_point_hold_ ? 0.0f : traj_param_components_[i].delat_traj()/magnitude_tmp;
+                unit_direction_[i] = is_point_hold_ ? 0.0f : traj_param_components_[i].delat_traj()/magnitude_tmp; // 计算各个轴的方向向量，如果是普通跟踪就为0屏蔽前馈控制
             }
 
             is_finish = false;
-            traj_param_magnitude_.start = 0.0f;
+            traj_param_magnitude_.start = 0.0f; //实际上模长的start永远都是0，因为模长最短也是0，留着是为了结构合理
             traj_param_magnitude_.ref = 0.0f;
             traj_param_magnitude_.t = 0.0f;
             traj_param_magnitude_.traget = magnitude_tmp;
@@ -148,7 +148,9 @@ public:
         }
     }
 
+/*————————————————————————————————实际运行轨迹并且产生速度和预计位姿，实际上不需要传入参数，调用放第二个—————————————————————————————————————*/
     void Run(){
+        /*================带方向的反馈计算，traj_param_magnitude_.now是控制点到轨迹的投影长度，correction_是各个轴的横向误差向量，单个轴的时候不存在横向误差=================*/
         if constexpr (dimensions == 1) {
             traj_param_magnitude_.now = unit_direction_[0]*traj_param_components_[0].delat_now_start();
         }else{
@@ -160,6 +162,7 @@ public:
             traj_param_magnitude_.now = projection;
         }
 
+        /*==================如果为真，进入普通的跟踪控制，为了方便直接用了横向误差控制的pid==============*/
         if(is_point_hold_){
             output_path_ff_ = 0.0f;
             if constexpr (dimensions == 1){
@@ -170,12 +173,13 @@ public:
                 }
             }
         }else {
+        /*===================如果为假，就根据Improvement枚举类型进入不同的优化控制=====================*/
             dt = DWT_GetDeltaT(&DWT_CNT);
             if(dt > 0.01f) dt = 0.01f;
             traj_param_magnitude_.t += dt;
             pos_output_path_ = ControlImprovementChoose(Improvement_);
             for(std::size_t i = 0; i < dimensions; ++i){
-                if(dimensions != 1)output_lateral_pid_[i] = PID_Calculate(&track_lateral_pid_[i],0,correction_[i]);
+                if(dimensions != 1)output_lateral_pid_[i] = PID_Calculate(&track_lateral_pid_[i],0,correction_[i]); //根据横向误差计算补偿速度
                 else output_lateral_pid_[i] = 0.0f;
                 pos_output_components_[i] = pos_output_path_*unit_direction_[i] + output_lateral_pid_[i];
                 traj_param_components_[i].ref = traj_param_components_[i].start + traj_param_magnitude_.ref*unit_direction_[i];
@@ -185,6 +189,7 @@ public:
         traj_param_magnitude_last_ = traj_param_magnitude_;
         traj_param_components_last_ = traj_param_components_;
 
+        /*===========判断是否到位，到位之后如果受外力脱离位置也会返回false==========*/
         is_finish = true;
         for(std::size_t i = 0; i < dimensions; ++i){
             const float error = traj_param_components_[i].delat_now();
@@ -198,6 +203,7 @@ public:
         }
     }
 
+/*——————————————————————————————————————————————————用来计算各个维度的横向误差，返回值是带长度的向量————————————————————————————————————————————————————*/
     std::array<float, dimensions> vectorToLine(const float projection){
         std::array<float, dimensions> correction{};
         for(std::size_t i = 0; i < dimensions; ++i){
@@ -206,6 +212,7 @@ public:
         return correction;
     }
 
+/*——————————————————————————————外部调用获取参数的接口————————————————————————————————————*/
     ValueType GetSpeedOutput(){
         if constexpr (dimensions == 1) {
             return pos_output_components_[0];
@@ -225,7 +232,7 @@ public:
         }
     }
     bool Getfinish(){ return is_finish; }
-   
+
 private:
 
     float ControlImprovementChoose(Control_Improvement Improvement){
