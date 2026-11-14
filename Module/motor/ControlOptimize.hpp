@@ -139,7 +139,7 @@ public:
             traj_param_magnitude_.ref = 0.0f;
             traj_param_magnitude_.t = 0.0f;
             traj_param_magnitude_.traget = magnitude_tmp;
-            if(T.has_value()){
+            if(T.has_value() && *T >= 0.01f){
                 traj_param_magnitude_.auto_calculate_T = false;
                 traj_param_magnitude_.T = *T;
             }else {

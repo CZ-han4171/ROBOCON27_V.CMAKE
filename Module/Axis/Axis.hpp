@@ -36,7 +36,7 @@ public:
         Axis_actual_single_pos_ = Warp_ToRange(Axis_actual_sum_pos_, -M_PI, M_PI);
     }
 
-    void setAxisPos_rad(float Axis_single_pos){
+    void setAxisSinglePos_rad(float Axis_single_pos){
         float delat = 0.0f;
         UpdateAxisPos();
         
@@ -51,6 +51,14 @@ public:
         }
         
         Axis_traget_sum_pos_ = Axis_actual_sum_pos_ + delat ;
+        float Motor_sum_pos = Axis_traget_sum_pos_*motor_rad_per_output_rad_;
+        MotorController_.MotorSumPosCtrl_rad(Motor_sum_pos);
+    }
+
+    void setAxisSumPos_rad(float Axis_sum_pos){
+        UpdateAxisPos();
+        
+        Axis_traget_sum_pos_ = Axis_sum_pos ;
         float Motor_sum_pos = Axis_traget_sum_pos_*motor_rad_per_output_rad_;
         MotorController_.MotorSumPosCtrl_rad(Motor_sum_pos);
     }

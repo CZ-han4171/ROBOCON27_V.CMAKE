@@ -92,4 +92,13 @@ void RobotDevices_Init() {
     DJI2006_controller3.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer<1>::Control_Improvement::SPEEDPLAN);
     DJI2006_controller4.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer<1>::Control_Improvement::SPEEDPLAN);
 
+    DJI2006_motor_VPleft_controller.init(M2006_P38_PlanParam, M2006_P38_SpeedPid, M2006_P38_PosPid,ControlOptimizer<1>::Control_Improvement::COSPLAN);
+    DJI2006_motor_VPright_controller.init(M2006_P38_PlanParam, M2006_P38_SpeedPid, M2006_P38_PosPid,ControlOptimizer<1>::Control_Improvement::COSPLAN);
+    DJI3508_motor_DLleft_controller.init(M3508_P19_PlanParam, M3508_P19_SpeedPid, M3508_P19_PosPid, ControlOptimizer<1>::Control_Improvement::COSPLAN);
+    DJI3508_motor_DLright_controller.init(M3508_P19_PlanParam, M3508_P19_SpeedPid, M3508_P19_PosPid, ControlOptimizer<1>::Control_Improvement::COSPLAN);
+    DJI2006_motor_MLleft_controller.init(M2006_P38_PlanParam, M2006_P38_SpeedPid, M2006_P38_PosPid,ControlOptimizer<1>::Control_Improvement::COSPLAN);
+    DJI2006_motor_MLright_controller.init(M2006_P38_PlanParam, M2006_P38_SpeedPid, M2006_P38_PosPid,ControlOptimizer<1>::Control_Improvement::COSPLAN);
+    DJI2006_motor_EVP_controller.init(M2006_P38_PlanParam, M2006_P38_SpeedPid, M2006_P38_PosPid,ControlOptimizer<1>::Control_Improvement::COSPLAN);
+    DJI2006_motor_EClaw_controller.init(M2006_P38_PlanParam, M2006_P38_SpeedPid, M2006_P38_PosPid,ControlOptimizer<1>::Control_Improvement::COSPLAN);
+    DJI2006_motor_Claw_controller.init(M2006_P38_PlanParam, M2006_P38_SpeedPid, M2006_P38_PosPid,ControlOptimizer<1>::Control_Improvement::COSPLAN);
 }

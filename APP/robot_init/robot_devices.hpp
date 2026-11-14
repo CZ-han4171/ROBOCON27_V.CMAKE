@@ -83,9 +83,9 @@ extern C610Motor DJI2006_motor_EClaw;
 extern C610Motor DJI2006_motor_EVP;
 extern DJIMotorController DJI2006_motor_EClaw_controller;
 extern DJIMotorController DJI2006_motor_EVP_controller;
-extern RotaryAxis EClaw;
-extern RotaryAxis EVP;
+extern LinearAxis EClaw;
+extern LinearAxis EVP;
 
 extern C610Motor DJI2006_motor_Claw;
-extern DJIMotorController DJI2006_controller_Claw;
-extern RotaryAxis Claw;
+extern DJIMotorController DJI2006_motor_Claw_controller;
+extern LinearAxis Claw;

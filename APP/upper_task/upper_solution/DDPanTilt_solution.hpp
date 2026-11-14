@@ -12,11 +12,11 @@
 #include "tool.hpp"
 
 
-#define kPitchMax 180.0f
-#define kPitchMin 0.0f
-#define kYawMax 360.0f
-#define kYawMin 0.0f
-#define kYawGearRatio 2.0f  // yaw 输出端的额外减速比：电机反向各转2圈，机构yaw转1圈
+inline constexpr float kPitchMax = 180.0f;
+inline constexpr float kPitchMin = 0.0f;
+inline constexpr float kYawMax = 360.0f;
+inline constexpr float kYawMin = 0.0f;
+inline constexpr float kYawGearRatio = 2.0f;  // yaw 输出端的额外减速比：电机反向各转2圈，机构yaw转1圈
 
 
 class DD_PanTilt{
@@ -25,12 +25,9 @@ public:
     enum VPIndex : size_t { kPitch = 0, kYaw = 1, kVPCount = 2 };
     enum ControlMode : size_t { SPEEDPLAN = 0, INTERPOLATION = 1};
 
-    DD_PanTilt(RotaryAxis &VPmotor_Left, RotaryAxis &VPmotor_Right, ControlMode controlmode = SPEEDPLAN, ControlOptimizer::Control_Improvement control_improvement = ControlOptimizer::Control_Improvement::COSPLAN)
+    DD_PanTilt(RotaryAxis &VPmotor_Left, RotaryAxis &VPmotor_Right, ControlMode controlmode = SPEEDPLAN, ControlOptimizer<2>::Control_Improvement control_improvement = ControlOptimizer<2>::Control_Improvement::COSPLAN)
         : motors_{&VPmotor_Left, &VPmotor_Right} {
-        for (auto &optimizer : optimizers_) {
-            optimizer.ConfigImprovement(control_improvement);
-            optimizer.traj_param_.auto_calculate_T = false;
-        }
+        optimizers_.ConfigImprovement(control_improvement);
         controlmode_ = controlmode;
     }
 
@@ -56,31 +53,18 @@ public:
 
         target_VP_rad_[kPitch] = pitch_rad;
         target_VP_rad_[kYaw] = yaw_rad;
-
         getVP_Pos();
         // caculationcommonmintimes();
         // if(common_duration_s.has_value() && *common_duration_s > common_T_s_){ }
-        if(common_duration_s.has_value()){
-            for (size_t i = 0; i < kVPCount; ++i) {
-                optimizers_[i].Set(target_VP_rad_[i], actual_VP_rad_[i], *common_duration_s);
-            }
-        }    
-        else{
-            for (size_t i = 0; i < kVPCount; ++i) {
-                optimizers_[i].Set(target_VP_rad_[i], actual_VP_rad_[i], common_T_s_);
-            }
-        }   
+        optimizers_.Set(target_VP_rad_, actual_VP_rad_, common_duration_s);
+   
     }
 
     void PlanSpeedSolution()
     {
-        getVP_Pos();
-        for (size_t i = 0; i < kVPCount; ++i) {
-            
-            optimizers_[i].Run(actual_VP_rad_[i]);
-            output_VP_speed_rad_s_[i] = optimizers_[i].GetPosOutput();
-            
-        }
+        getVP_Pos();          
+        optimizers_.Run();
+        output_VP_speed_rad_s_ = optimizers_.GetSpeedOutput();
         output_motor_speed_rad_s_[kLeft] = output_VP_speed_rad_s_[kPitch]
             + kYawGearRatio * output_VP_speed_rad_s_[kYaw];
         output_motor_speed_rad_s_[kRight] = output_VP_speed_rad_s_[kPitch]
@@ -90,10 +74,8 @@ public:
     void PlanInterpolationSolution() 
     {
         getVP_Pos();
-        for (size_t i = 0; i < kVPCount; ++i) {
-            optimizers_[i].Run(actual_VP_rad_[i]);
-            output_VP_pos_rad_[i] = optimizers_[i].GetPosRef();           
-        }
+        optimizers_.Run();
+        output_VP_pos_rad_ = optimizers_.GetPosRef();           
         output_motor_pos_rad_[kLeft] = output_VP_pos_rad_[kPitch]
             + kYawGearRatio * output_VP_pos_rad_[kYaw];
         output_motor_pos_rad_[kRight] = output_VP_pos_rad_[kPitch]
@@ -108,7 +90,7 @@ public:
         output_motor_pos_rad_[kRight] = actual_VP_rad_[kPitch]
             - kYawGearRatio * actual_VP_rad_[kYaw];
         for (size_t i = 0; i < motors_.size(); ++i) {
-                    motors_[i]->setAxisPos_rad(output_motor_pos_rad_[i]);
+                    motors_[i]->setAxisSumPos_rad(output_motor_pos_rad_[i]);
         }
     }
 
@@ -124,7 +106,7 @@ public:
             case INTERPOLATION:
                 PlanInterpolationSolution();
                 for (size_t i = 0; i < motors_.size(); ++i) {
-                    motors_[i]->setAxisPos_rad(output_motor_pos_rad_[i]);
+                    motors_[i]->setAxisSumPos_rad(output_motor_pos_rad_[i]);
                 }
                 break;
             default :
@@ -134,17 +116,17 @@ public:
         }
     }
     
-    void ConfigControlPlan(ControlMode controlmode = SPEEDPLAN, ControlOptimizer::Control_Improvement control_improvement = ControlOptimizer::Control_Improvement::COSPLAN)
+    void ConfigControlPlan(ControlMode controlmode = SPEEDPLAN, ControlOptimizer<2>::Control_Improvement control_improvement = ControlOptimizer<2>::Control_Improvement::COSPLAN)
     {
         controlmode_ = controlmode;
-        for (size_t i = 0; i < kVPCount; ++i) {
-            if(optimizers_[i].Improvement_ != control_improvement) {
-                optimizers_[i].ConfigImprovement(control_improvement); 
-                optimizers_[i].traj_param_last_.traget += 1.0f; //重置 
-            }
-        }
+        optimizers_.ConfigImprovement(control_improvement); 
     }
 
+    void ConfigOptimizer(PID_t &path_pid, ControlOptimizer<2>::PlanParam &plan)
+    {
+        optimizers_.ConfigPid(path_pid);         
+        optimizers_.ConfigPlanParam(plan);
+    }
     // void caculationcommonmintimes()
     // {
     //     switch(optimizers_[kPitch].Improvement_)
@@ -173,9 +155,10 @@ private:
         pid.Improve = param.improve;
         PID_Init(&pid);
     }
+
     std::array<RotaryAxis *, kMotorCount> motors_{};
 
-    std::array<ControlOptimizer, kVPCount> optimizers_{};
+    ControlOptimizer<2> optimizers_;
 
     std::array<float, kMotorCount> current_motor_speed_rad_s_{};
     std::array<float, kMotorCount> output_motor_speed_rad_s_{};
@@ -192,6 +175,5 @@ private:
     //规划
     bool isFetched_  = false;
     float dt_s_;  // 规划周期
-    float common_T_s_ = 0.01f;
     ControlMode controlmode_ = SPEEDPLAN;
 };

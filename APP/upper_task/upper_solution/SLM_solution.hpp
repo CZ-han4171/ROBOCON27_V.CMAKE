@@ -11,10 +11,16 @@
 #include "topic_pool.h"
 #include "tool.hpp"
 
+template <std::size_t AxisCount>
 class SLM
 {
+    using ValueType = std::conditional_t<
+        AxisCount == 1,
+        float,
+        std::array<float, AxisCount>
+    >;
+
 public:
-    enum MotorIndex : size_t {kL = 0,kR = 1, kCount = 2};
     enum ControlMode : size_t {SPEEDPLAN = 0, INTERPOLATION = 1};
     struct LiftLimit
     {
@@ -22,19 +28,22 @@ public:
         float max;
     };
     
-    SLM(LinearAxis &L_L, LinearAxis &L_R,ControlMode controlmode = SPEEDPLAN,ControlOptimizer::Control_Improvement control_improvement = ControlOptimizer::Control_Improvement::COSPLAN)
-    : motors_{&L_L, &L_R}{
-        for (auto &optimizer : optimizers_) {
-            optimizer.ConfigImprovement(control_improvement);
-            optimizer.traj_param_.auto_calculate_T = false;
-        }
-        controlmode_ = controlmode;
-    };
+    SLM(const std::array<LinearAxis*, AxisCount> &motors)
+    : motors_(motors){};
 
-    void getPos_meter(){
+    void init(float Limit_min, float Limit_max, PID_t &path_pid, typename ControlOptimizer<AxisCount>::PlanParam &plan,
+        ControlMode controlmode = SPEEDPLAN,
+        typename ControlOptimizer<AxisCount>::Control_Improvement control_improvement = ControlOptimizer<AxisCount>::Control_Improvement::COSPLAN)
+    {
+        optimizer_.ConfigImprovement(control_improvement);
+        controlmode_ = controlmode;
+        ConfigLimit(Limit_min, Limit_max);
+        ConfigOptimizer(path_pid, plan);
+    }
+    void updateFeedback(){
         for (size_t i = 0; i < motors_.size(); ++i) {
-            current_BLM_meter_[i] = motors_[i]->getAxisPos_meter();
-            current_BLM_Speed_meter_s_[i] = motors_[i]->getAxisSpeed_meter();
+            current_SLM_meter_[i] = motors_[i]->getAxisPos_meter();
+            current_SLM_Speed_meter_s_[i] = motors_[i]->getAxisSpeed_meter();
         }
     }
 
@@ -42,49 +51,40 @@ public:
     {
         lift_meter = std::clamp(lift_meter, liftlimit_.min, liftlimit_.max);
 
-        for(size_t i = 0;i < kCount; ++i)
+        for(size_t i = 0;i < AxisCount; ++i)
         {
-            target_BLM_meter_[i] = lift_meter;
+            target_SLM_meter_[i] = lift_meter;
         }
-        getPos_meter();
-        if(common_duration_s.has_value()){
-            for (size_t i = 0; i < kCount; ++i) {
-                optimizers_[i].Set(target_BLM_meter_[i], current_BLM_meter_[i], *common_duration_s);
-            }
-        }    
-        else{
-            for (size_t i = 0; i < kCount; ++i) {
-                optimizers_[i].Set(target_BLM_meter_[i], current_BLM_meter_[i], common_T_s_);
-            }
-        }   
+        updateFeedback();
+
+        optimizer_.Set(target_SLM_meter_, current_SLM_meter_, common_duration_s); 
     }
 
     void PlanSpeedSolution()
     {
-        getPos_meter();
-        for (size_t i = 0; i < kCount; ++i) {            
-            optimizers_[i].Run(current_BLM_meter_[i]);
-            output_BLM_speed_meter_s_[i] = optimizers_[i].GetPosOutput();
-        } 
+        updateFeedback();
+        // optimizer_.Set(target_SLM_meter_, current_SLM_meter_);         
+        optimizer_.Run();
+        output_SLM_speed_meter_s_ = optimizer_.GetSpeedOutput();
     }
 
     void PlanInterpolationSolution() 
     {
-        getPos_meter();
-        for (size_t i = 0; i < kCount; ++i) {
-            optimizers_[i].Run(current_BLM_meter_[i]);
-            output_BLM_pos_meter_[i] = optimizers_[i].GetPosRef();           
-        }
+        updateFeedback();
+        // optimizer_.Set(target_SLM_meter_, current_SLM_meter_);
+        optimizer_.Run();
+        output_SLM_pos_meter_ = optimizer_.GetPosRef();           
+            
     }
 
     void stop()
     {
-        getPos_meter();
+        updateFeedback();
         for (size_t i = 0; i < motors_.size(); ++i) {
-            output_BLM_pos_meter_[i] = current_BLM_meter_[i];
+            output_SLM_pos_meter_[i] = current_SLM_meter_[i];
         }
         for (size_t i = 0; i < motors_.size(); ++i) {
-                    motors_[i]->setAxisPos_meter(output_BLM_pos_meter_[i]);
+                    motors_[i]->setAxisPos_meter(output_SLM_pos_meter_[i]);
         }
     }
 
@@ -94,13 +94,13 @@ public:
             case SPEEDPLAN:
                 PlanSpeedSolution();
                 for (size_t i = 0; i < motors_.size(); ++i) {
-                    motors_[i]->setAxisSpeed_meter_s(output_BLM_speed_meter_s_[i]);
+                    motors_[i]->setAxisSpeed_meter_s(output_SLM_speed_meter_s_[i]);
                 }
                 break;
             case INTERPOLATION:
                 PlanInterpolationSolution();
                 for (size_t i = 0; i < motors_.size(); ++i) {
-                    motors_[i]->setAxisPos_meter(output_BLM_pos_meter_[i]);
+                    motors_[i]->setAxisPos_meter(output_SLM_pos_meter_[i]);
                 }
                 break;
             default :
@@ -109,37 +109,43 @@ public:
         }
     }
     
-    void ConfigControlPlan(ControlMode controlmode = SPEEDPLAN, ControlOptimizer::Control_Improvement control_improvement = ControlOptimizer::Control_Improvement::COSPLAN)
+    void ConfigControlPlan(ControlMode controlmode = SPEEDPLAN, 
+                            typename ControlOptimizer<AxisCount>::Control_Improvement control_improvement = ControlOptimizer<AxisCount>::Control_Improvement::COSPLAN)
     {
         controlmode_ = controlmode;
-        for (size_t i = 0; i < kCount; ++i) {
-            if(optimizers_[i].Improvement_ != control_improvement) {
-                optimizers_[i].ConfigImprovement(control_improvement); 
-                optimizers_[i].traj_param_last_.traget += 1.0f; //重置 
-            }
-        }
+        optimizer_.ConfigImprovement(control_improvement); 
     }
 
     void ConfigLimit(float lift_meter_min, float lift_meter_max)
     {
         liftlimit_.min = lift_meter_min;
         liftlimit_.max = lift_meter_max;
+
     }
 
+    void ConfigOptimizer(PID_t &path_pid, typename ControlOptimizer<AxisCount>::PlanParam &plan)
+    {
+        optimizer_.ConfigPid(path_pid);         
+        optimizer_.ConfigPlanParam(plan);
+    }
+
+    bool isFinished(){ return optimizer_.Getfinish();}
 private:
-    std::array<LinearAxis*, kCount> motors_{};
+    std::array<LinearAxis*, AxisCount> motors_{};
  
-    LiftLimit liftlimit_ = {0.01f,0.01f};
+    LiftLimit liftlimit_ = {0.0f,1.0f};
 
-    std::array<float, kCount> current_BLM_meter_{};
-    std::array<float, kCount> current_BLM_Speed_meter_s_{};
-    std::array<float, kCount> target_BLM_meter_{};
 
-    std::array<float, kCount> output_BLM_pos_meter_{};
-    std::array<float, kCount> output_BLM_speed_meter_s_{};
+    std::array<float, AxisCount> current_SLM_meter_{};
+    std::array<float, AxisCount> current_SLM_Speed_meter_s_{};
+    std::array<float, AxisCount> target_SLM_meter_{};
+
+    std::array<float, AxisCount> output_SLM_pos_meter_{};
+    std::array<float, AxisCount> output_SLM_speed_meter_s_{};
 
     //规划
-    std::array<ControlOptimizer, kCount> optimizers_{};
+    ControlOptimizer<AxisCount> optimizer_;
     ControlMode controlmode_ = SPEEDPLAN;
-    float common_T_s_ = 1.0f;
+
+
 };

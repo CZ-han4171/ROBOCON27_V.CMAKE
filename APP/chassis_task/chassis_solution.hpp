@@ -271,7 +271,7 @@ public:
         for (size_t i = 0; i < kWheelCount; ++i) {
             float DriveSpeed_In = target_speed_rad_s_[i] + SteerMotors_[i]->getAxisSpeed_rad()/DriveMotors_[i]->getMotorPerOutput();
             DriveMotors_[i]->setAxisSpeed_rad_s(DriveSpeed_In);
-            SteerMotors_[i]->setAxisPos_rad(target_steer_motor_rad[i]);
+            SteerMotors_[i]->setAxisSinglePos_rad(target_steer_motor_rad[i]);
             // SteerMotors_[i]->setAxisPos_rad(target_steer_motor_rad[i],Encoders_[i]->getSumPos_rad());
         }
     }

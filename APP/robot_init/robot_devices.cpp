@@ -76,26 +76,26 @@ RotaryAxis VPRight(DJI2006_motor_VPright_controller,-1.0f);
 //二级抬升
 C620Motor DJI3508_motor_DLleft(&fdcan3_bus, 0x207, false, 0x1FF, false);   //从正对吸盘口方向看
 C620Motor DJI3508_motor_DLright(&fdcan3_bus, 0x208, false, 0x1FF, false);
-DJIMotorController DJI2006_motor_DLleft_controller(DJI3508_motor_DLleft);
-DJIMotorController DJI2006_motor_DLright_controller(DJI3508_motor_DLright);
-LinearAxis DLLeft(DJI2006_motor_DLleft_controller,(100.0f / M_PI));  //电机转一圈，输出轴转100mm
-LinearAxis DLRight(DJI2006_motor_DLright_controller,(-100.0f / M_PI));
+DJIMotorController DJI3508_motor_DLleft_controller(DJI3508_motor_DLleft);
+DJIMotorController DJI3508_motor_DLright_controller(DJI3508_motor_DLright);
+LinearAxis DLLeft(DJI3508_motor_DLleft_controller,(M_PI / 0.05f));  //电机转一圈，输出轴转100mm
+LinearAxis DLRight(DJI3508_motor_DLright_controller,(-M_PI / 0.05f));
 
 //微动抬升
 C610Motor DJI2006_motor_MLleft(&fdcan1_bus, 0x205, false, 0x1FF, false);  //从正对吸盘口方向看
 C610Motor DJI2006_motor_MLright(&fdcan1_bus, 0x206, false, 0x1FF, false);
 DJIMotorController DJI2006_motor_MLleft_controller(DJI2006_motor_MLleft);
 DJIMotorController DJI2006_motor_MLright_controller(DJI2006_motor_MLright);
-LinearAxis MLLeft(DJI2006_motor_MLleft_controller,(90.0f / M_PI));  //电机转一圈，输出轴转100mm
-LinearAxis MLRight(DJI2006_motor_MLright_controller,(-90.0f / M_PI));
+LinearAxis MLLeft(DJI2006_motor_MLleft_controller,(M_PI / 0.045f));  //电机转一圈，输出轴转90mm
+LinearAxis MLRight(DJI2006_motor_MLright_controller,(-M_PI / 0.045f));
 //前伸
 C610Motor DJI2006_motor_EClaw(&fdcan1_bus, 0x207, false, 0x1FF, false);  //从正对吸盘口方向看
 C610Motor DJI2006_motor_EVP(&fdcan1_bus, 0x208, false, 0x1FF, false);
 DJIMotorController DJI2006_motor_EClaw_controller(DJI2006_motor_EClaw);
 DJIMotorController DJI2006_motor_EVP_controller(DJI2006_motor_EVP);
-LinearAxis EClaw(DJI2006_motor_EClaw_controller,36.0f);  //电机转一圈，输出轴转100mm
-LinearAxis EVP(DJI2006_motor_EVP_controller,36.0f);
+LinearAxis EClaw(DJI2006_motor_EClaw_controller, 1.0f / 0.036f); 
+LinearAxis EVP(DJI2006_motor_EVP_controller, 1.0f /0.036f);
 //夹爪
 C610Motor DJI2006_motor_Claw(&fdcan2_bus, 0x202, 0, 0x200, 0);
-DJIMotorController DJI2006_controller_Claw(DJI2006_motor_Claw);
-RotaryAxis Claw(DJI2006_controller_Claw, 43.75f);
+DJIMotorController DJI2006_motor_Claw_controller(DJI2006_motor_Claw);
+LinearAxis Claw(DJI2006_motor_Claw_controller, 1.0f /0.04375f);

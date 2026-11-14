@@ -137,7 +137,7 @@ typedef struct {
 typedef struct {
   float pitch;
   float yaw;
-  float common_T_s = 0.01f;
+  float common_T_s = 1.0f;
 } pub_VP_cmd;
 
 #pragma pack()

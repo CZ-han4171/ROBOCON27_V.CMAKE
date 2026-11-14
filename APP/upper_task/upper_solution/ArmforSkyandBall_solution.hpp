@@ -21,14 +21,18 @@ public:
     enum ControlMode : size_t {SPEEDPLAN = 0, INTERPOLATION = 1};
     ArmforSkyandBall(LinearAxis &DL_L, LinearAxis &DL_R, LinearAxis &ML_L,LinearAxis &ML_R, 
         LinearAxis &EVP, LinearAxis &EClaw, LinearAxis &Claw, 
-        ControlMode controlmode = SPEEDPLAN,ControlOptimizer::Control_Improvement control_improvement = ControlOptimizer::Control_Improvement::COSPLAN)
-    :SLMs_{SLM{DL_L, DL_R}, SLM{ML_L, ML_R}},motors_{&EVP, &EClaw, &Claw}{
+        ControlMode controlmode = SPEEDPLAN,typename ControlOptimizer<1>::Control_Improvement control_improvement = ControlOptimizer<1>::Control_Improvement::COSPLAN)
+        :SLMs_{SLM<2>{{&DL_L, &DL_R}}, SLM<2>{{&ML_L, &ML_R}}},motors_{&EVP, &EClaw, &Claw}{
         controlmode_ = controlmode;
     };
-private:
-    std::array<SLM, kSLMCount> SLMs_;
-    std::array<LinearAxis*, kCount>motors_{};
-    
 
+    void getStuas()
+    {
+        
+    }
+
+private:
+    std::array<SLM<2>, kSLMCount> SLMs_;
+    std::array<LinearAxis*, kCount>motors_{};
     ControlMode controlmode_;
 };
