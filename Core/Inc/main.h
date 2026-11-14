@@ -57,6 +57,11 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define INT_CAN_Pin GPIO_PIN_10
+#define INT_CAN_GPIO_Port GPIOE
+#define INT_CAN_EXTI_IRQn EXTI15_10_IRQn
+#define CS_CAN_Pin GPIO_PIN_11
+#define CS_CAN_GPIO_Port GPIOE
 #define PUMP_PICK_Pin GPIO_PIN_3
 #define PUMP_PICK_GPIO_Port GPIOG
 #define VALVE_CLAW_Pin GPIO_PIN_4
