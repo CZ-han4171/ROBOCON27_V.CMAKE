@@ -208,8 +208,8 @@ public:
     };
 
     // 轮序固定为 [左上, 右上, 左下, 右下]
-    SwerveChassis4(RotaryAxis &DriveMotor_1, RotaryAxis &DriveMotor_2, RotaryAxis &DriveMotor_3, RotaryAxis &DriveMotor_4,
-                   RotaryAxis &SteerMotor_1, RotaryAxis &SteerMotor_2, RotaryAxis &SteerMotor_3, RotaryAxis &SteerMotor_4,
+    SwerveChassis4(RotaryAxis<1,1> &DriveMotor_1, RotaryAxis<1,1> &DriveMotor_2, RotaryAxis<1,1> &DriveMotor_3, RotaryAxis<1,1> &DriveMotor_4,
+                   RotaryAxis<1,1> &SteerMotor_1, RotaryAxis<1,1> &SteerMotor_2, RotaryAxis<1,1> &SteerMotor_3, RotaryAxis<1,1> &SteerMotor_4,
                    BRT38B     &Encoder_1,    BRT38B     &Encoder_2,    BRT38B     &Encoder_3,    BRT38B     &Encoder_4)
         : DriveMotors_{&DriveMotor_1, &DriveMotor_2, &DriveMotor_3, &DriveMotor_4},
           SteerMotors_{&SteerMotor_1, &SteerMotor_2, &SteerMotor_3, &SteerMotor_4},
@@ -244,9 +244,9 @@ public:
             target_raw_steer_rad[i] = atan2f(Swerve_speed.y, Swerve_speed.x);
 
             // SteerMotors_[i]->UpdateAxisPos(Encoders_[i]->getSumPos_rad());
-            SteerMotors_[i]->UpdateAxisPos();
+            SteerMotors_[i]->UpdateAxisData();
             const float angle_offset = (direction_sign_[i] == SwerveDirection::kNegative)?M_PI:0.0f;
-            actual_steer_motor_rad[i] = Warp_ToRange(SteerMotors_[i]->getAxisSinglePos_rad() + angle_offset, -M_PI, M_PI);
+            actual_steer_motor_rad[i] = Warp_ToRange(SteerMotors_[i]->getAxisSinglePos_rad()[0] + angle_offset, -M_PI, M_PI);
             if( Swerve_speed.x == 0.0f && Swerve_speed.y == 0.0f){
                 target_raw_steer_rad[i] = target_raw_steer_rad_last[i];
             }else{
@@ -256,7 +256,7 @@ public:
                 const float angle_offset = (direction_sign_[i] == SwerveDirection::kNegative)?M_PI:0.0f;
                 target_steer_motor_rad[i] = Warp_ToRange(target_raw_steer_rad[i] + angle_offset, -M_PI, M_PI);
             }
-            float steer_error = Warp_ToRange(target_steer_motor_rad[i] - SteerMotors_[i]->getAxisSinglePos_rad(), -M_PI, M_PI);
+            float steer_error = Warp_ToRange(target_steer_motor_rad[i] - SteerMotors_[i]->getAxisSinglePos_rad()[0], -M_PI, M_PI);
             watch[i] = steer_error;
             float scale = fmaxf(0.0f, cosf(steer_error));
             target_speed_rad_s_[i] *= direction_sign_[i]*scale;
@@ -269,9 +269,9 @@ public:
     void run(const pub_chassis_cmd &cmd) {
         solveWheelRadPerSec(cmd);
         for (size_t i = 0; i < kWheelCount; ++i) {
-            float DriveSpeed_In = target_speed_rad_s_[i] + SteerMotors_[i]->getAxisSpeed_rad()/DriveMotors_[i]->getMotorPerOutput();
-            DriveMotors_[i]->setAxisSpeed_rad_s(DriveSpeed_In);
-            SteerMotors_[i]->setAxisSinglePos_rad(target_steer_motor_rad[i]);
+            float DriveSpeed_In = target_speed_rad_s_[i] + SteerMotors_[i]->getAxisSpeed_rad()[0]/DriveMotors_[i]->getMotorPerOutput()[0];
+            DriveMotors_[i]->setAxisSpeed_rad_s({DriveSpeed_In});
+            SteerMotors_[i]->setAxisSinglePos_rad({target_steer_motor_rad[i]});
             // SteerMotors_[i]->setAxisPos_rad(target_steer_motor_rad[i],Encoders_[i]->getSumPos_rad());
         }
     }
@@ -294,8 +294,8 @@ private:
         PID_Init(&pid);
     }
 
-    std::array<RotaryAxis *, 4> DriveMotors_{};
-    std::array<RotaryAxis *, 4> SteerMotors_{};
+    std::array<RotaryAxis<1,1> *, 4> DriveMotors_{};
+    std::array<RotaryAxis<1,1> *, 4> SteerMotors_{};
     std::array<BRT38B *, 4> Encoders_{};
     std::array<Geometry, kWheelCount> Geometries_{};
     std::array<SwerveDirection, kWheelCount> direction_sign_{};

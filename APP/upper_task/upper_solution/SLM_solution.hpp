@@ -84,7 +84,7 @@ public:
             output_SLM_pos_meter_[i] = current_SLM_meter_[i];
         }
         for (size_t i = 0; i < motors_.size(); ++i) {
-                    motors_[i]->setAxisPos_meter(output_SLM_pos_meter_[i]);
+            motors_[i]->setAxisPos_meter(output_SLM_pos_meter_[i]);
         }
     }
 
@@ -120,7 +120,6 @@ public:
     {
         liftlimit_.min = lift_meter_min;
         liftlimit_.max = lift_meter_max;
-
     }
 
     void ConfigOptimizer(PID_t &path_pid, typename ControlOptimizer<AxisCount>::PlanParam &plan)

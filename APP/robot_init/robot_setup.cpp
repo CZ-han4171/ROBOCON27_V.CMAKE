@@ -25,21 +25,23 @@
 #include "robot_devices.hpp"
 #include <array>
 #include <math.h>
+#include <sys/types.h>
 
 PidParam M2006_P38_SpeedPid(3000.0f, 16600.0f, 0.0f, 10000.0f, 0.0f, IMCREATEMENT_OF_OUT);
 PidParam M2006_P38_PosPid(3.0f,0.4f,0.01f,5*M_PI,0.5f*kDegToRad,NONE);
-ControlOptimizer<1>::PlanParam M2006_P38_PlanParam(M_PI,M_PI,10*M_PI);
+PlanParam M2006_P38_PlanParam(M_PI,M_PI,10*M_PI);
+
 PidParam M3508_P19_SpeedPid(4000.0f, 8600.0f, 0.0f, 16000.0f, 0.0f, IMCREATEMENT_OF_OUT);
 PidParam M3508_P19_PosPid(3.0f,0.4f,0.01f,2*M_PI,0.5f*kDegToRad,NONE);
-ControlOptimizer<1>::PlanParam M3508_P19_PlanParam(4.0f*M_PI,4.0f*M_PI,10*M_PI);
-// PidParam U8Lite_SpeedPid(0.0f,3000.0f,0.0f,30000.0f,0.0f,IMCREATEMENT_OF_OUT);
-// PidParam U8Lite_SpeedPid(500.0f,1.0f,0.0f,30000.0f,0.0f,NONE);
+PlanParam M3508_P19_PlanParam(4.0f*M_PI,4.0f*M_PI,10*M_PI);
+
 PidParam U8Lite_SpeedPid(100.0f,200.0f,0.0f,30000.0f,0.0f,IMCREATEMENT_OF_OUT);
+PidParam U8Lite_PosPid(3.0f,0.4f,0.01f,2*M_PI,0.5f*kDegToRad,NONE);
+PlanParam U8Lite_PlanParam(4.0f*M_PI,4.0f*M_PI,10*M_PI);
 
-
-ControlOptimizer<1>::PlanParam SwerveSteer_M2006_PlanParam(100.0f*M_PI,100.0f*M_PI, 10.0f*M_PI);
 PidParam SwerveSteer_M2006_SpeedPid(3000.0f, 16600.0f, 0.0f, 10000.0f, 0.0f, IMCREATEMENT_OF_OUT);
 PidParam SwerveSteer_M2006_PosPid(3.0f,0.8f,0.0f,25.0f*M_PI,0.05f*kDegToRad,NONE);
+PlanParam SwerveSteer_M2006_PlanParam(100.0f*M_PI,100.0f*M_PI, 10.0f*M_PI);
 
 MitParam AutoHomeParam_Positive(M_PI,0.0f,0.0f,0.0f,1.0f);
 MitParam AutoHomeParam_Negative(-M_PI,0.0f,0.0f,0.0f,1.0f);
@@ -54,19 +56,36 @@ void RobotDevices_Init() {
     chassis_motor2.init();
     chassis_motor3.init();
     chassis_motor4.init();
+    chassis_controller1.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    chassis_controller2.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    chassis_controller3.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    chassis_controller4.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    Omni_Chassis.init(Control_Improvement::NONE,M3508_P19_PlanParam, M3508_P19_PosPid);
 
-    U8_motor1.init(1.0f, 21);
-    U8_motor2.init(1.0f, 21);
-    U8_motor3.init(1.0f, 21);
-    U8_motor4.init(1.0f, 21);
-    Encoder_1.init(4096,16);
-    Encoder_2.init(4096,16);
-    Encoder_3.init(4096,16);
-    Encoder_4.init(4096,16);
-    DJI2006_motor1.init();
-    DJI2006_motor2.init();
-    DJI2006_motor3.init();
-    DJI2006_motor4.init();
+    chassis_lift_motor1.init();
+    chassis_lift_motor2.init();
+    chassis_lift_motor3.init();
+    chassis_lift_motor4.init();
+    chassis_lift_controller1.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    chassis_lift_controller2.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    chassis_lift_controller3.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    chassis_lift_controller4.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    chassis_Lift.init(Control_Improvement::COSPLAN,M3508_P19_PlanParam, M3508_P19_PosPid,
+                      {0,1},
+                      {{0,0.33f},{0,0.33f}});
+
+    // U8_motor1.init(1.0f, 21);
+    // U8_motor2.init(1.0f, 21);
+    // U8_motor3.init(1.0f, 21);
+    // U8_motor4.init(1.0f, 21);
+    // Encoder_1.init(4096,16);
+    // Encoder_2.init(4096,16);
+    // Encoder_3.init(4096,16);
+    // Encoder_4.init(4096,16);
+    // DJI2006_motor1.init();
+    // DJI2006_motor2.init();
+    // DJI2006_motor3.init();
+    // DJI2006_motor4.init();
 
     //天空块与球的机械臂初始化
     DJI2006_motor_VPleft.init();
@@ -80,17 +99,25 @@ void RobotDevices_Init() {
     DJI2006_motor_Claw.init();
 
     arm4310_motor.init();
-    
 
-    U8_controller1.ConfigSpeedPid(U8Lite_SpeedPid);
-    U8_controller2.ConfigSpeedPid(U8Lite_SpeedPid);
-    U8_controller3.ConfigSpeedPid(U8Lite_SpeedPid);
-    U8_controller4.ConfigSpeedPid(U8Lite_SpeedPid);
+    // U8_controller1.init(U8Lite_SpeedPid,U8Lite_PosPid);
+    // U8_controller2.init(U8Lite_SpeedPid,U8Lite_PosPid);
+    // U8_controller3.init(U8Lite_SpeedPid,U8Lite_PosPid);
+    // U8_controller4.init(U8Lite_SpeedPid,U8Lite_PosPid);
 
-    DJI2006_controller1.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer<1>::Control_Improvement::SPEEDPLAN);
-    DJI2006_controller2.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer<1>::Control_Improvement::SPEEDPLAN);
-    DJI2006_controller3.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer<1>::Control_Improvement::SPEEDPLAN);
-    DJI2006_controller4.init(SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_SpeedPid, SwerveSteer_M2006_PosPid, ControlOptimizer<1>::Control_Improvement::SPEEDPLAN);
+    // DJI2006_controller1.init(SwerveSteer_M2006_SpeedPid,SwerveSteer_M2006_PosPid);
+    // DJI2006_controller2.init(SwerveSteer_M2006_SpeedPid,SwerveSteer_M2006_PosPid);
+    // DJI2006_controller3.init(SwerveSteer_M2006_SpeedPid,SwerveSteer_M2006_PosPid);
+    // DJI2006_controller4.init(SwerveSteer_M2006_SpeedPid,SwerveSteer_M2006_PosPid);
+
+    // SwerveDrive1.init(Control_Improvement::NONE, U8Lite_PlanParam,U8Lite_PosPid);
+    // SwerveDrive2.init(Control_Improvement::NONE, U8Lite_PlanParam,U8Lite_PosPid);
+    // SwerveDrive3.init(Control_Improvement::NONE, U8Lite_PlanParam,U8Lite_PosPid);
+    // SwerveDrive4.init(Control_Improvement::NONE, U8Lite_PlanParam,U8Lite_PosPid);
+    // SwerveSteer1.init(Control_Improvement::SPEEDPLAN, SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_PosPid);
+    // SwerveSteer2.init(Control_Improvement::SPEEDPLAN, SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_PosPid);
+    // SwerveSteer3.init(Control_Improvement::SPEEDPLAN, SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_PosPid);
+    // SwerveSteer4.init(Control_Improvement::SPEEDPLAN, SwerveSteer_M2006_PlanParam, SwerveSteer_M2006_PosPid);
 
     DJI2006_motor_VPleft_controller.init(M2006_P38_PlanParam, M2006_P38_SpeedPid, M2006_P38_PosPid,ControlOptimizer<1>::Control_Improvement::COSPLAN);
     DJI2006_motor_VPright_controller.init(M2006_P38_PlanParam, M2006_P38_SpeedPid, M2006_P38_PosPid,ControlOptimizer<1>::Control_Improvement::COSPLAN);

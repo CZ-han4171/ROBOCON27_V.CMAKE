@@ -28,7 +28,7 @@
 #include <cstdint>
 #include <math.h>
 
-class chassis_lift {
+class ChassisLift {
     enum LegIndex : size_t {
         kLeftUp = 0,
         kRightUp = 1,
@@ -41,15 +41,28 @@ class chassis_lift {
         kRight = 1,
         kWheelCount = 2,
     };
-    struct Geometry {
+    struct Leg_Geometry {
         float_t wheel_diameter_m; // 轮径
 
-        Geometry(float wheel_diameter = 0.8f)
+        Wheel_Geometry(float wheel_diameter = 0.8f)
             : wheel_diameter_m(wheel_diameter){}
+    };
+    struct Wheel_Geometry {
+        float_t max_ground_diameter_m; // 最大离地高度
+        float_t max_stroke_m; // 最大行程
+
+        Wheel_Geometry(float_t max_ground_diameter = 0.024f,
+                 float_t max_stroke = 0.33f)
+            : max_ground_diameter_m(max_ground_diameter),
+              max_stroke_m(max_stroke) {}
     };
     enum class PositionControlMode {
         kJointSpace,
         kCartesianSpace
     };
+
+    ChassisLift(LinearAxis &Leg_lu, LinearAxis &Leg_ru, LinearAxis &Leg_ld, LinearAxis &Leg_ld,
+                RotaryAxis &Wheel_left, RotaryAxis &Wheel_right,
+            )
 }
 

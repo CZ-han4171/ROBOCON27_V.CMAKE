@@ -108,7 +108,7 @@ void controlTask(void *argument) {
     
     controlInit();
     // uint32_t last_time = HAL_GetTick();
-    U8_controller3.setSpeedPidMode(VESCMotorController::VESC_SpeedControlMode::kLocalPid);
+    // U8_controller3.setSpeedPidMode(VESCMotorController::VESC_SpeedControlMode::kLocalPid);
 
     for (;;) {
         // static float controlTask_dt = 0.0f;
