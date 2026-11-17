@@ -205,32 +205,11 @@ public:
 
     virtual void init(Control_Improvement improvement,
                       PlanParam planparam,
-                      PidParam pidparam,
-                      std::initializer_list<std::size_t> ControlObject,
-                      std::initializer_list<TravelLimit> travel_limit){
-        optimizer_.init(improvement,planparam,pidparam);
-        ConfigLimit(ControlObject,travel_limit);
-    };
-
-    virtual void init(Control_Improvement improvement,
-                      PlanParam planparam,
                       PidParam pidparam){
         optimizer_.init(improvement,planparam,pidparam);
     };
 
     virtual void UpdateAxisData();
-
-    virtual void setAxisSumPos_rad(ControlFloatArray Axis_sum_pos,std::optional<float> T = std::nullopt);
-    virtual void setAxisSinglePos_rad(ControlFloatArray Axis_single_pos,std::optional<float> T = std::nullopt);
-    virtual void setAxisSpeed_rad_s(ControlFloatArray Axis_speed);
-    virtual ControlFloatArray getAxisSumPos_rad(){ return Axis_actual_sum_pos_rad_; };
-    virtual ControlFloatArray getAxisSinglePos_rad(){ return Axis_actual_single_pos_rad_; };
-    virtual ControlFloatArray getAxisSpeed_rad(){ return Axis_actual_speed_rad_; };
-
-    virtual void setAxisPos_meter(ControlFloatArray Axis_pos,std::optional<float> T = std::nullopt);
-    virtual void setAxisSpeed_meter_s(ControlFloatArray Axis_speed);
-    virtual ControlFloatArray getAxisPos_meter(){ return Axis_actual_pos_meter_; };
-    virtual ControlFloatArray getAxisSpeed_meter(){ return Axis_actual_speed_meter_; };
 
     virtual void setAxisPos(ControlFloatArray Axis_pos,std::optional<float> T = std::nullopt);
     virtual void setAxisSpeed(ControlFloatArray Axis_speed);
@@ -266,16 +245,6 @@ public:
     MotorFloatArray motor_rad_per_output_;
     std::array<std::size_t, ControlCount> ComtrollerMotorCounts_;
 
-    ControlFloatArray Axis_traget_single_pos_rad_{0};
-    ControlFloatArray Axis_actual_single_pos_rad_{0};
-    ControlFloatArray Axis_traget_sum_pos_rad_{0}; 
-    ControlFloatArray Axis_actual_sum_pos_rad_{0};
-    ControlFloatArray Axis_actual_speed_rad_{0};
-
-    ControlFloatArray Axis_traget_pos_meter_{0};
-    ControlFloatArray Axis_actual_pos_meter_{0};
-    ControlFloatArray Axis_actual_speed_meter_{0};
-
     ControlFloatArray Axis_traget_pos_{0};
     ControlFloatArray Axis_actual_pos_{0};
     ControlFloatArray Axis_actual_speed_{0};
@@ -302,207 +271,6 @@ public:
 
 
 template <std::size_t ControlCount,std::size_t MotorCount>
-class RotaryAxis : public AxisBase<ControlCount,MotorCount>{
-    using Base = AxisBase<ControlCount,MotorCount>;
-
-public:
-    using ControlFloatArray = typename Base::ControlFloatArray;
-    using MotorFloatArray   = typename Base::MotorFloatArray;
-    using TravelLimit       = typename Base::TravelLimit;
-
-    explicit RotaryAxis(std::array<std::initializer_list<MotorControllerBase*>, ControlCount> MotorControllers, 
-                        std::array<float, MotorCount> motor_rad_per_output){
-        std::size_t motor_count = 0; 
-        this->motor_rad_per_output_ = motor_rad_per_output;
-        for(std::size_t i = 0 ; i < ControlCount ; ++i){
-            this->ComtrollerMotorCounts_[i] = MotorControllers[i].size();
-            for(std::size_t j = 0 ; j < this->ComtrollerMotorCounts_[i] ; ++j){
-                this->MotorControllers_[motor_count++] = MotorControllers[i].begin()[j];
-            }
-        }
-    }
-
-    enum class ForbiddenZoneMode {
-        None,     // 不启用禁区
-        Enabled   // 启用禁区
-    };
-
-    void UpdateAxisData() override {
-        std::size_t motor_count = 0;
-        for(std::size_t i = 0 ; i < ControlCount ; ++i){
-            float sum_pos = 0.0f;
-            float sum_speed = 0.0f;
-            for(std::size_t j = 0 ; j < this->ComtrollerMotorCounts_[i] ; ++j){
-                this->Axis_actual_pos_optimizer_in_[motor_count] = this->MotorControllers_[motor_count]->getMotorSumPos_rad()/this->motor_rad_per_output_[motor_count];
-                this->Axis_actual_speed_optimizer_in_[motor_count] = this->MotorControllers_[motor_count]->getMotorSpeed_rad()/this->motor_rad_per_output_[motor_count];
-                sum_pos += this->Axis_actual_pos_optimizer_in_[motor_count];
-                sum_speed += this->Axis_actual_speed_optimizer_in_[motor_count];
-                motor_count++;
-            }
-            this->Axis_actual_speed_rad_[i] = sum_speed/this->ComtrollerMotorCounts_[i];
-            this->Axis_actual_sum_pos_rad_[i] = sum_pos/this->ComtrollerMotorCounts_[i];
-            this->Axis_actual_single_pos_rad_[i] = Warp_ToRange(this->Axis_actual_sum_pos_rad_[i], -M_PI, M_PI);
-        }   
-    }
-
-    void setAxisSinglePos_rad(ControlFloatArray Axis_single_pos,std::optional<float> T = std::nullopt) override {
-        UpdateAxisData();
-        this->AxisStall_update();
-        if(this->AutoHome_solve())return ;
-
-        std::array<float, ControlCount> delat;
-        std::array<float, MotorCount> optimizer_traget_in_;
-        std::size_t optimizer_in_count = 0;
-
-        this->Limit_solve(Axis_single_pos);
-
-        for(std::size_t i = 0 ; i < ControlCount ; ++i){
-            this->Axis_traget_single_pos_rad_[i] = Axis_single_pos[i];
-            if(isEnableForbidden_ == ForbiddenZoneMode::Enabled){
-                forbiddenPoint_[i] = Warp_ToRange(forbiddenPoint_[i], 0, 2*M_PI);
-                float Axis_traget_single_pos_forbidden = Warp_ToRange(this->Axis_traget_single_pos_rad_[i] - forbiddenPoint_[i], 0, 2*M_PI);
-                float Axis_actual_single_pos_forbidden = Warp_ToRange(this->Axis_actual_single_pos_rad_[i] - forbiddenPoint_[i], 0, 2*M_PI);
-                delat[i] = Axis_traget_single_pos_forbidden - Axis_actual_single_pos_forbidden;
-            }else if(isEnableForbidden_ == ForbiddenZoneMode::None){
-                delat[i] = Warp_ToRange(this->Axis_traget_single_pos_rad_[i] - this->Axis_actual_single_pos_rad_[i], -M_PI, M_PI);
-            }
-
-            this->Axis_traget_sum_pos_rad_[i] = this->Axis_actual_sum_pos_rad_[i] + delat[i];
-
-            for(std::size_t j = 0 ; j < this->ComtrollerMotorCounts_[i] ; ++j){
-                optimizer_traget_in_[optimizer_in_count] = this->Axis_traget_sum_pos_rad_[i];
-                optimizer_in_count++;
-            }
-        }
-
-        this->optimizer_.Run(optimizer_traget_in_,this->Axis_actual_pos_optimizer_in_,T);
-        this->dispatchCommand();
-    }
-
-    void setAxisSumPos_rad(ControlFloatArray Axis_sum_pos,std::optional<float> T = std::nullopt) override {
-        UpdateAxisData();
-        this->AxisStall_update();
-        if(this->AutoHome_solve())return ;
-
-        std::array<float, MotorCount> optimizer_traget_in_;
-        std::size_t optimizer_in_count = 0;
-
-        this->Limit_solve(Axis_sum_pos);
-
-        for(std::size_t i = 0 ; i < ControlCount ; ++i){
-            this->Axis_traget_sum_pos_rad_[i] = Axis_sum_pos[i];
-            for(std::size_t j = 0 ; j < this->ComtrollerMotorCounts_[i] ; ++j){
-                optimizer_traget_in_[optimizer_in_count] = this->Axis_traget_sum_pos_rad_[i];
-                optimizer_in_count++;
-            }
-        }
-        this->optimizer_.Run(optimizer_traget_in_,this->Axis_actual_pos_optimizer_in_,T);
-        this->dispatchCommand();
-    }
-
-    void setAxisSpeed_rad_s(ControlFloatArray Axis_speed) override {
-        UpdateAxisData();
-        this->AxisStall_update();
-        if(this->AutoHome_solve())return ;
-
-        std::array<float, MotorCount> speed_in;
-        std::size_t speed_in_count = 0;
-        for(std::size_t i = 0 ; i < ControlCount ; ++i){
-            for(std::size_t j = 0 ; j < this->ComtrollerMotorCounts_[i] ; ++j){
-                float Motor_speed = Axis_speed[i]*this->motor_rad_per_output_[speed_in_count];
-                speed_in[speed_in_count] = Motor_speed;
-                this->MotorControllers_[speed_in_count]->MotorSpeedCtrl_rad_s(Motor_speed);
-                speed_in_count++;
-            }
-        }
-    }
-
-    void setAxisforbidden(ControlFloatArray forbiddenPoint){
-        forbiddenPoint_ = forbiddenPoint;
-        isEnableForbidden_ = ForbiddenZoneMode::Enabled;
-    }
-
-private:
-    ControlFloatArray forbiddenPoint_{0};
-    ForbiddenZoneMode isEnableForbidden_ = ForbiddenZoneMode::None;
-};
-
-template <std::size_t ControlCount,std::size_t MotorCount>
-class LinearAxis : public AxisBase<ControlCount,MotorCount>{
-    using Base = AxisBase<ControlCount,MotorCount>;
-
-public:
-    using ControlFloatArray = typename Base::ControlFloatArray;
-    using MotorFloatArray   = typename Base::MotorFloatArray;
-    using TravelLimit       = typename Base::TravelLimit;
-    explicit LinearAxis(std::array<std::initializer_list<MotorControllerBase*>, ControlCount> MotorControllers, 
-                        std::array<float, MotorCount> motor_rad_per_output){
-        std::size_t motor_count = 0; 
-        this->motor_rad_per_output_ = motor_rad_per_output;
-        for(std::size_t i = 0 ; i < ControlCount ; ++i){
-            this->ComtrollerMotorCounts_[i] = MotorControllers[i].size();
-            for(std::size_t j = 0 ; j < this->ComtrollerMotorCounts_[i] ; ++j){
-                this->MotorControllers_[motor_count++] = MotorControllers[i].begin()[j];
-            }
-        }
-    }
-
-    void UpdateAxisData() override {
-        std::size_t motor_count = 0;
-        for(std::size_t i = 0 ; i < ControlCount ; ++i){
-            float sum_pos = 0.0f;
-            float sum_speed = 0.0f;
-            for(std::size_t j = 0 ; j < this->ComtrollerMotorCounts_[i] ; ++j){
-                this->Axis_actual_pos_optimizer_in_[motor_count] = this->MotorControllers_[motor_count]->getMotorSumPos_rad()/this->motor_rad_per_output_[motor_count];
-                this->Axis_actual_speed_optimizer_in_[motor_count] = this->MotorControllers_[motor_count]->getMotorSpeed_rad()/this->motor_rad_per_output_[motor_count];
-                sum_pos += this->Axis_actual_pos_optimizer_in_[motor_count];
-                sum_speed += this->Axis_actual_speed_optimizer_in_[motor_count];
-                motor_count++;
-            }
-            this->Axis_actual_pos_meter_[i] = sum_pos/this->ComtrollerMotorCounts_[i];
-            this->Axis_actual_speed_meter_[i] = sum_speed/this->ComtrollerMotorCounts_[i];
-        }
-    }
-
-    void setAxisPos_meter(ControlFloatArray Axis_pos,std::optional<float> T = std::nullopt) override {
-        UpdateAxisData();
-        this->AxisStall_update();
-        if(this->AutoHome_solve())return ;
-
-        std::array<float, MotorCount> optimizer_traget_in_;
-        std::size_t optimizer_in_count = 0;
-
-        this->Limit_solve(Axis_pos);
-
-        for(std::size_t i = 0 ; i < ControlCount ; ++i){
-            this->Axis_traget_pos_meter_[i] = Axis_pos[i];
-            for(std::size_t j = 0 ; j < this->ComtrollerMotorCounts_[i] ; ++j){
-                optimizer_traget_in_[optimizer_in_count] = this->Axis_traget_pos_meter_[i];
-                optimizer_in_count++;
-            }
-        }
-        this->optimizer_.Run(optimizer_traget_in_,this->Axis_actual_pos_optimizer_in_,T);
-        this->dispatchCommand();
-    }
-
-    void setAxisSpeed_meter_s(ControlFloatArray Axis_speed) override {
-        UpdateAxisData();
-        this->AxisStall_update();
-        if(this->AutoHome_solve())return ;
-
-        std::size_t speed_in_count = 0;
-        for(std::size_t i = 0 ; i < ControlCount ; ++i){
-            for(std::size_t j = 0 ; j < this->ComtrollerMotorCounts_[i] ; ++j){
-                float Motor_speed = Axis_speed[i]*this->motor_rad_per_output_[speed_in_count];
-                this->MotorControllers_[speed_in_count++]->MotorSpeedCtrl_rad_s(Motor_speed);
-            }
-        }
-    }
-
-private:
-};
-
-template <std::size_t ControlCount,std::size_t MotorCount>
 class GeneralAxis : public AxisBase<ControlCount,MotorCount>{
     using Base = AxisBase<ControlCount,MotorCount>;
 
@@ -512,7 +280,7 @@ public:
     using TravelLimit       = typename Base::TravelLimit;
     using PositionControlOptions = typename Base::PositionControlOptions;
 
-    using Base::init;
+    // using Base::init;
 
     explicit GeneralAxis(std::array<std::initializer_list<MotorControllerBase*>, ControlCount> MotorControllers, 
                         std::array<float, MotorCount> motor_rad_per_output){
@@ -526,14 +294,14 @@ public:
         }
     }
 
-    void init(Control_Improvement improvement,
-                      PlanParam planparam,
-                      PidParam pidparam,
-                      std::initializer_list<std::size_t> ControlObject,
-                      std::initializer_list<PositionControlOptions> position_options){
-        this->optimizer_.init(improvement,planparam,pidparam);
-        this->ConfigOptions(ControlObject,position_options);
-    };
+    // void init(Control_Improvement improvement,
+    //                   PlanParam planparam,
+    //                   PidParam pidparam,
+    //                   std::initializer_list<std::size_t> ControlObject,
+    //                   std::initializer_list<PositionControlOptions> position_options){
+    //     this->optimizer_.init(improvement,planparam,pidparam);
+    //     this->ConfigOptions(ControlObject,position_options);
+    // };
 
     void UpdateAxisData() override {
         this->dt = DWT_GetDeltaT(&this->DWT_CNT);

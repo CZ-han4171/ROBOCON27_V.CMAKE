@@ -60,7 +60,7 @@ extern DJIMotorController chassis_controller2;
 extern DJIMotorController chassis_controller3;
 extern DJIMotorController chassis_controller4;
 
-extern RotaryAxis<4,4> Omni_Chassis;
+extern GeneralAxis<4,4> Omni_Chassis;
 
 // 底盘抬升设备
 extern C620Motor chassis_lift_motor1; 
@@ -72,7 +72,7 @@ extern DJIMotorController chassis_lift_controller2;
 extern DJIMotorController chassis_lift_controller3;
 extern DJIMotorController chassis_lift_controller4;
 
-extern LinearAxis<2,4> chassis_Lift;
+extern GeneralAxis<2,4> chassis_Lift;
 
 //上层电机
 extern DM4310Motor arm4310_motor;

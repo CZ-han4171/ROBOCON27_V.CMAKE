@@ -75,10 +75,10 @@ GeneralAxis<4,4> Omni_Chassis({{{&chassis_controller1},{&chassis_controller2},{&
                             {1.0f,1.0f,1.0f,1.0f});
 
 // 底盘抬升设备
-C620Motor chassis_lift_motor1(&fdcan3_bus, 0x201, 0, 0x200, 0); 
-C620Motor chassis_lift_motor2(&fdcan3_bus, 0x202, 0, 0x200, 0);
-C620Motor chassis_lift_motor3(&fdcan3_bus, 0x203, 0, 0x200, 0);
-C620Motor chassis_lift_motor4(&fdcan3_bus, 0x204, 0, 0x200, 0);
+C620Motor chassis_lift_motor1(&fdcan3_bus, 0x205, 0, 0x200, 0); 
+C620Motor chassis_lift_motor2(&fdcan3_bus, 0x206, 0, 0x200, 0);
+C620Motor chassis_lift_motor3(&fdcan3_bus, 0x207, 0, 0x200, 0);
+C620Motor chassis_lift_motor4(&fdcan3_bus, 0x208, 0, 0x200, 0);
 DJIMotorController chassis_lift_controller1(chassis_lift_motor1);
 DJIMotorController chassis_lift_controller2(chassis_lift_motor2);
 DJIMotorController chassis_lift_controller3(chassis_lift_motor3);
@@ -91,16 +91,16 @@ GeneralAxis<2,4> chassis_Lift({{{&chassis_lift_controller1,&chassis_lift_control
 DM4310Motor arm4310_motor(&fdcan2_bus, 0x301, 0, 0x01, 0,DM4310Motor::PosWithSpeed);
 
 //VP电机
-C610Motor DJI2006_motor_VPleft(&fdcan2_bus, 0x205, false, 0x1FF, false);  //从正对吸盘口方向看
-C610Motor DJI2006_motor_VPright(&fdcan2_bus, 0x206, false, 0x1FF, false);
+C610Motor DJI2006_motor_VPleft(&fdcan1_bus, 0x201, false, 0x1FF, false);  //从正对吸盘口方向看
+C610Motor DJI2006_motor_VPright(&fdcan1_bus, 0x202, false, 0x1FF, false);
 DJIMotorController DJI2006_motor_VPleft_controller(DJI2006_motor_VPleft);
 DJIMotorController DJI2006_motor_VPright_controller(DJI2006_motor_VPright);
 RotaryAxis VPLeft(DJI2006_motor_VPleft_controller,1.0f);
 RotaryAxis VPRight(DJI2006_motor_VPright_controller,-1.0f);
 
 //二级抬升
-C620Motor DJI3508_motor_DLleft(&fdcan2_bus, 0x207, false, 0x1FF, false);   //从正对吸盘口方向看
-C620Motor DJI3508_motor_DLright(&fdcan2_bus, 0x208, false, 0x1FF, false);
+C620Motor DJI3508_motor_DLleft(&fdcan1_bus, 0x203, false, 0x1FF, false);   //从正对吸盘口方向看
+C620Motor DJI3508_motor_DLright(&fdcan1_bus, 0x204, false, 0x1FF, false);
 DJIMotorController DJI3508_motor_DLleft_controller(DJI3508_motor_DLleft);
 DJIMotorController DJI3508_motor_DLright_controller(DJI3508_motor_DLright);
 LinearAxis DLLeft(DJI3508_motor_DLleft_controller,(M_PI / 0.05f));  //电机转一圈，输出轴转100mm

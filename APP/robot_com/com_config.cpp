@@ -329,10 +329,10 @@ void can1SendTask(void *argument) {
 
     pack_group1.id = 0x200; // DJI Group 1
     int16_t commands_group1[4] = {0};
-    commands_group1[0] = static_cast<int16_t>(0); // 0x201
-    commands_group1[1] = static_cast<int16_t>(0); // 0x202
-    commands_group1[2] = static_cast<int16_t>(0); // 0x203   
-    commands_group1[3] = static_cast<int16_t>(0); // 0x204
+    commands_group1[0] = static_cast<int16_t>(DJI2006_motor_VPleft.cmdTrans()); // 0x201
+    commands_group1[1] = static_cast<int16_t>(DJI2006_motor_VPright.cmdTrans()); // 0x202
+    commands_group1[2] = static_cast<int16_t>(DJI3508_motor_DLleft.cmdTrans()); // 0x203   
+    commands_group1[3] = static_cast<int16_t>(DJI3508_motor_DLright.cmdTrans()); // 0x204
     packDJIMotorCanMsg(pack_group1.id, motor_group1_ids, commands_group1, 4, pack_group1.data, len);
     fdcan1_bus.addCanMsg(pack_group1);
 
@@ -410,10 +410,10 @@ void can3SendTask(void *argument) {
     // 一帧固定打包 2 个槽位：0x205~0x206
     pack_group2.id = 0x1FF; // DJI Group 2
     int16_t commands_group2[4] = {0};
-    commands_group2[0] = static_cast<int16_t>(DJI2006_motor_VPleft.cmdTrans()); // 0x205
-    commands_group2[1] = static_cast<int16_t>(DJI2006_motor_VPright.cmdTrans()); // 0x206
-    commands_group2[2] = static_cast<int16_t>(DJI3508_motor_DLleft.cmdTrans()); // 0x207
-    commands_group2[3] = static_cast<int16_t>(DJI3508_motor_DLright.cmdTrans()); // 0x208
+    commands_group2[0] = static_cast<int16_t>(chassis_lift_motor1.cmdTrans()); // 0x205
+    commands_group2[1] = static_cast<int16_t>(chassis_lift_motor2.cmdTrans()); // 0x206
+    commands_group2[2] = static_cast<int16_t>(chassis_lift_motor3.cmdTrans()); // 0x207
+    commands_group2[3] = static_cast<int16_t>(chassis_lift_motor4.cmdTrans()); // 0x208
     packDJIMotorCanMsg(pack_group2.id, motor_group2_ids, commands_group2, 4, pack_group2.data, len);
     fdcan3_bus.addCanMsg(pack_group2);
 
