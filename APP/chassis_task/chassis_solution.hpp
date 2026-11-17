@@ -199,7 +199,7 @@ public:
 
     struct Geometry {
         float_t wheel_diameter_m; // 轮径
-        Vec2_t wheel_position_m;   // 舵机定位
+        Vec2_t wheel_position_m;   // 舵轮定位
 
         Geometry(float wheel_diameter = 0.8f,
                  Vec2_t wheel_position = {.x = 0.1915f,.y = 0.208f})
