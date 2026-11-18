@@ -63,7 +63,7 @@ void controlInit() {
     }
 
 }
-
+ 
 void controlTask(void *argument) {
     TickType_t currentTime = xTaskGetTickCount();
     TickType_t rmUpdateTime = currentTime;
