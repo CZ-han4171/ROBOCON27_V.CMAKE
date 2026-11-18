@@ -27,7 +27,6 @@
 #include <cmath>
 #include <cstdint>
 #include <math.h>
-#include "control_Traject.hpp"
 #include "Motor.hpp"
 #include "MotorControl.hpp"
 #include "Axis.hpp"
@@ -41,19 +40,9 @@ osThreadId_t ControlTaskHandle;
 TypedTopicPublisher<pub_chassis_cmd> chassis_data_pub("chassis_cmd");
 pub_chassis_cmd rm_cmd{};
 
-TypedTopicPublisher<pub_VP_cmd> VP_data_pub("VP_cmd");
-pub_VP_cmd VP_cmd{};
-
-// static TypedTopicPublisher<QR_code_cmd_t> qr_code_cmd_pub("qr_code_cmd");   
-// static QR_code_cmd_t qr_code_cmd{};
-
 TypedTopicSubscriber<pub_RM_Data> control_rm_sub("rm", 8);
 pub_RM_Data control_rm_cmd{};
 pub_RM_Data control_rm_cmd_last{};
-
-TypedTopicSubscriber<pub_Position_Data> control_position_sub("position", 8);
-pub_Position_Data control_position_msg{};
-pub_Position_Data control_position{};
 
 pub_chassis_cmd robot_v_aim_cmd{};
 pub_chassis_cmd state_now_cmd{};
@@ -61,10 +50,6 @@ pub_chassis_cmd state_now_cmd{};
 //debug begin
 float_t debug_dt;
 uint32_t debug_DWT_CNT;
-CanBus::ClassicPack debug_pack;
-bool DebugCan_button = false;
-extern CanBus fdcan2_bus;
-
 float watch[10];
 //debug end
 
@@ -77,28 +62,11 @@ void controlInit() {
         return;
     }
 
-    if (!control_position_sub.IsValid()) {
-        return;
-    }
-    // if (!control_ir_sub.IsValid()) {
-    //     return;
-    // }
-    // if(!qr_code_cmd_pub.IsValid()) {
-    //     return;
-    // }
-    // if(!qr_code_data_sub.IsValid()) {
-    //     return;
-    // }
 }
-
-
-float rm_angle_deg;
-float v_aim;
 
 void controlTask(void *argument) {
     TickType_t currentTime = xTaskGetTickCount();
-    TickType_t rcUpdateTime = currentTime;
-    TickType_t vpUpdateTime = currentTime;
+    TickType_t rmUpdateTime = currentTime;
     constexpr TickType_t kRemoteInputTimeout = pdMS_TO_TICKS(500);
 
     control_rm_cmd.joyLHori = kJoyCenter;
@@ -107,18 +75,13 @@ void controlTask(void *argument) {
     control_rm_cmd.joyRVert = kJoyCenter;
     
     controlInit();
-    // uint32_t last_time = HAL_GetTick();
-    // U8_controller3.setSpeedPidMode(VESCMotorController::VESC_SpeedControlMode::kLocalPid);
 
     for (;;) {
-        // static float controlTask_dt = 0.0f;
-        // static uint32_t controlTask_DWT_CNT = 0;
-        // controlTask_dt = DWT_GetDeltaT(&controlTask_DWT_CNT);
-        //test begin
+
         const TickType_t now = xTaskGetTickCount();
         if (control_rm_sub.TryGet(&control_rm_cmd)) {
-            rcUpdateTime = now;
-        } else if (now - rcUpdateTime > kRemoteInputTimeout) {
+            rmUpdateTime = now;
+        } else if (now - rmUpdateTime > kRemoteInputTimeout) {
             control_rm_cmd.joyLHori = kJoyCenter;
             control_rm_cmd.joyLVert = kJoyCenter;
             control_rm_cmd.joyRHori = kJoyCenter;
@@ -126,76 +89,21 @@ void controlTask(void *argument) {
         }
         control_rm_cmd_last = control_rm_cmd;
 
+        {
+            rm_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
+            rm_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
+            rm_cmd.omega_    = -JoyToVelocity(control_rm_cmd.joyRHori, kJoyDeadZoneRight, MAX_VELOCITY_ANGULAR);
 
-        // {
-        //     rm_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
-        //     rm_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
-        //     rm_cmd.omega_    = -JoyToVelocity(control_rm_cmd.joyRHori, kJoyDeadZoneRight, MAX_VELOCITY_ANGULAR);
-
-        //     rm_angle_deg = atan2(rm_cmd.linear_y_, rm_cmd.linear_x_) / kDegToRad;
-        //     v_aim = sqrt(rm_cmd.linear_x_ * rm_cmd.linear_x_ + rm_cmd.linear_y_ * rm_cmd.linear_y_);
-        //     robot_v_aim_cmd.linear_x_ = v_aim * cos((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
-        //     robot_v_aim_cmd.linear_y_ = v_aim * sin((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
-        //     robot_v_aim_cmd.omega_ = rm_cmd.omega_;    
-        // }
-
-        // 摇杆量映射为角速度（度/秒）；负向减小目标角度，正向增大。
-        const float vpDt = static_cast<float>(now - vpUpdateTime) *
-                           static_cast<float>(portTICK_PERIOD_MS) * 0.001f;
-        vpUpdateTime = now;
-        const bool remoteFresh = (now - rcUpdateTime <= kRemoteInputTimeout);
-        if (remoteFresh && control_rm_cmd.swA == RM_2_POS_SW_State_t::DOWN) {
-            VP_cmd.pitch = std::clamp(
-                VP_cmd.pitch + JoyToVelocity(control_rm_cmd.joyLVert,
-                                                   kJoyDeadZoneLeft, 30.0f) * vpDt,
-                0.0f, 180.0f);
-            VP_cmd.yaw = std::clamp(
-                VP_cmd.yaw + JoyToVelocity(control_rm_cmd.joyLHori,
-                                                 kJoyDeadZoneLeft, 30.0f) * vpDt,
-                0.0f, 360.0f);
-            VP_cmd.common_T_s = 0.01f;
-            VP_data_pub.Publish(VP_cmd);
+            float rm_angle_deg = atan2(rm_cmd.linear_y_, rm_cmd.linear_x_) / kDegToRad;
+            float v_aim = sqrt(rm_cmd.linear_x_ * rm_cmd.linear_x_ + rm_cmd.linear_y_ * rm_cmd.linear_y_);
+            robot_v_aim_cmd.linear_x_ = v_aim * cos((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
+            robot_v_aim_cmd.linear_y_ = v_aim * sin((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
+            robot_v_aim_cmd.omega_ = rm_cmd.omega_;    
         }
+
         {   
             /////////////////debug begin///////////////////////
-            // debug_dt = DWT_GetDeltaT(&debug_DWT_CNT);
-            // all_time = all_time + debug_dt;
-
-            // // arm3508_Axis.setAxisSpeed_rad_s(DJI3508_w_rad_aim);
-            // EncoderSumPos_rad = Encoder_1.getSumPos_rad();
-
-            // // SteerPos_Deg_traget = M_PI*cosf(all_time*3.0f)*kRadToDeg;
-            // if(rm_cmd.linear_y_ == 0 && rm_cmd.linear_x_ == 0 ){
-            //     SteerPos_Deg_traget = SteerPos_Deg_traget_last;
-            // }else{
-            //     SteerPos_Deg_traget = atan2(rm_cmd.linear_y_, rm_cmd.linear_x_) / kDegToRad;
-            // }
-            // SteerPos_Deg_traget_last = SteerPos_Deg_traget;
-            // SwerveSteer3.setAxisPos_rad(SteerPos_Deg_traget*kDegToRad);
-            // SteerPos_Deg_actual = SwerveSteer3.getAxisSinglePos_rad()*kRadToDeg;
-            // // SwerveSteer1.setAxisSpeed_rad_s(-2.0f*M_PI);
-            // // DJI2006_motor1.setMotorCmd(1000.0f);
-            // Speed2006 = DJI2006_motor3.getCurrentSpeed();
-            // Cmd2006 = DJI2006_motor1.cmdTrans();
-
-            // SwerveDrive3.setAxisSpeed_rad_s(JoyToVelocity(control_rm_cmd.joyRVert, kJoyDeadZoneLeft, 10*M_PI));
-            // U8_controller3.MotorCurrentCtrl(JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, 2000.0f));
-            // if(lift3508_controller.isMotorStalled()){
-            //     is_OnZero = true;
-            //     lift3508_motor.setMotorPosZero();
-            // }
-            // if(is_OnZero){
-            //     lift3508_axis.setAxisPos_meter(0.159f);
-            // }else {
-            //     lift3508_controller.MotorMitCtrl(M_PI, 0.0f, 0.0f, 0.0f, 0.5f);
-            // }
             
-            // watch[0] = U8_controller3.getMotorSpeed_rad();
-            // // // U8_motor3.setMotorCtrl(U8_3_erpm, VESCMotor::VESC_MODE::SET_ERPM);
-            // if(button){
-            //     fdcan2_bus.addCanMsg(debug_pack);
-            //     DebugCan_button = !DebugCan_button;
-            // }
             /////////////////debug end///////////////////////
         }
 
