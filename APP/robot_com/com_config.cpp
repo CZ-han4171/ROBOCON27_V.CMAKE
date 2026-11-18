@@ -38,8 +38,6 @@
 #include "topic_pool.h"
 #include "usart.h"
 
-#include "control_Traject.hpp"
-
 #include "chassis_solution.hpp" //访问底盘控制器用于串口调参
 
 #include <cmath>
@@ -214,32 +212,6 @@ uint8_t comServiceInit() {
   canFilterInit(&hfdcan3, FDCAN_EXTENDED_ID, FDCAN_FILTER_TO_RXFIFO1, 0, 0);
   bspCanInit(&hfdcan3);
 
-  //can设备注册
-  fdcan2_bus.registerDevice(&Encoder_1);
-  fdcan2_bus.registerDevice(&Encoder_2);
-  fdcan2_bus.registerDevice(&Encoder_3);
-  fdcan2_bus.registerDevice(&Encoder_4);
-  fdcan2_bus.registerDevice(&DJI2006_motor1);
-  fdcan2_bus.registerDevice(&DJI2006_motor2);
-  fdcan2_bus.registerDevice(&DJI2006_motor3);
-  fdcan2_bus.registerDevice(&DJI2006_motor4);
-  fdcan1_bus.registerDevice(&U8_motor1);
-  fdcan1_bus.registerDevice(&U8_motor2);
-  fdcan1_bus.registerDevice(&U8_motor3);
-  fdcan1_bus.registerDevice(&U8_motor4);
-
- 
-
-  fdcan3_bus.registerDevice(&chassis_motor1);
-  fdcan3_bus.registerDevice(&chassis_motor2);
-  fdcan3_bus.registerDevice(&chassis_motor3);
-  fdcan3_bus.registerDevice(&chassis_motor4);
-
-  // fdcan2_bus.registerDevice(&arm2006_motor);
-  // fdcan3_bus.registerDevice(&arm3508_motor);
-  fdcan2_bus.registerDevice(&arm4310_motor);
-  fdcan2_bus.registerDevice(&lift3508_motor);
-
   // 串口外设
   uart2_rx_semphore = osSemaphoreNew(1, 0, NULL);
   if (uart2_rx_semphore == NULL || uart2_port.startRx() != HAL_OK) {
@@ -313,13 +285,35 @@ CanBus::ClassicPack watchcan1[10];
 void can1SendTask(void *argument) {
   TickType_t currentTime = xTaskGetTickCount();
 
+  CanBus::ClassicPack pack_group1;
+  pack_group1.type = CanBus::Type::STANDARD;
+  const uint32_t motor_group1_ids[4] = {0x201, 0x202, 0x203, 0x204};
+
+  CanBus::ClassicPack pack_group2;
+  pack_group2.type = CanBus::Type::STANDARD;
+  const uint32_t motor_group2_ids[4] = {0x205, 0x206, 0x207, 0x208};
+  uint8_t len = 8;
+
   for (;;) {
 
-    fdcan1_bus.addCanMsg(U8_motor1.VESCMotorCanTrans());
-    fdcan1_bus.addCanMsg(U8_motor2.VESCMotorCanTrans());
-    fdcan1_bus.addCanMsg(U8_motor3.VESCMotorCanTrans());
-    watchcan1[2] = U8_motor3.VESCMotorCanTrans();
-    fdcan1_bus.addCanMsg(U8_motor4.VESCMotorCanTrans());
+    pack_group1.id = 0x200; // DJI Group 1
+    int16_t commands_group1[4] = {0};
+    commands_group1[0] = static_cast<int16_t>(0); // 0x201
+    commands_group1[1] = static_cast<int16_t>(0); // 0x202
+    commands_group1[2] = static_cast<int16_t>(0); // 0x203   
+    commands_group1[3] = static_cast<int16_t>(0); // 0x204
+    packDJIMotorCanMsg(pack_group1.id, motor_group1_ids, commands_group1, 4, pack_group1.data, len);
+    fdcan1_bus.addCanMsg(pack_group1);
+
+    // 一帧固定打包 2 个槽位：0x205~0x206
+    pack_group2.id = 0x1FF; // DJI Group 2
+    int16_t commands_group2[4] = {0};
+    commands_group2[0] = static_cast<int16_t>(0); // 0x205
+    commands_group2[1] = static_cast<int16_t>(0); // 0x206
+    commands_group2[2] = static_cast<int16_t>(0); // 0x207
+    commands_group2[3] = static_cast<int16_t>(0); // 0x208
+    packDJIMotorCanMsg(pack_group2.id, motor_group2_ids, commands_group2, 4, pack_group2.data, len);
+    fdcan1_bus.addCanMsg(pack_group2);
 
     vTaskDelayUntil(&currentTime, 1); // 每1ms执行一次发送任务
   }
@@ -339,19 +333,20 @@ void can2SendTask(void *argument) {
   for (;;) {
     pack_group1.id = 0x200; // DJI Group 1
     int16_t commands_group1[4] = {0};
-    commands_group1[0] = static_cast<int16_t>(lift3508_motor.cmdTrans()); // 0x201
+    commands_group1[0] = static_cast<int16_t>(0); // 0x201
     commands_group1[1] = static_cast<int16_t>(0); // 0x202
-    commands_group1[2] = static_cast<int16_t>(0); // 0x203
+    commands_group1[2] = static_cast<int16_t>(0); // 0x203   
     commands_group1[3] = static_cast<int16_t>(0); // 0x204
     packDJIMotorCanMsg(pack_group1.id, motor_group1_ids, commands_group1, 4, pack_group1.data, len);
     fdcan2_bus.addCanMsg(pack_group1);
 
+    // 一帧固定打包 2 个槽位：0x205~0x206
     pack_group2.id = 0x1FF; // DJI Group 2
     int16_t commands_group2[4] = {0};
-    commands_group2[0] = static_cast<int16_t>(DJI2006_motor1.cmdTrans()); // 0x205
-    commands_group2[1] = static_cast<int16_t>(DJI2006_motor2.cmdTrans()); // 0x206
-    commands_group2[2] = static_cast<int16_t>(DJI2006_motor3.cmdTrans()); // 0x207
-    commands_group2[3] = static_cast<int16_t>(DJI2006_motor4.cmdTrans()); // 0x208
+    commands_group2[0] = static_cast<int16_t>(0); // 0x205
+    commands_group2[1] = static_cast<int16_t>(0); // 0x206
+    commands_group2[2] = static_cast<int16_t>(0); // 0x207
+    commands_group2[3] = static_cast<int16_t>(0); // 0x208
     packDJIMotorCanMsg(pack_group2.id, motor_group2_ids, commands_group2, 4, pack_group2.data, len);
     fdcan2_bus.addCanMsg(pack_group2);
 
@@ -361,22 +356,37 @@ void can2SendTask(void *argument) {
 
 void can3SendTask(void *argument) {
   TickType_t currentTime = xTaskGetTickCount();
-  CanBus::ClassicPack pack;
-  pack.type = CanBus::Type::STANDARD;
 
-  uint8_t len = 8;  
-  const uint32_t chassis_motor_ids[4] = {0x201, 0x202, 0x203, 0x204};
+  CanBus::ClassicPack pack_group1;
+  pack_group1.type = CanBus::Type::STANDARD;
+  const uint32_t motor_group1_ids[4] = {0x201, 0x202, 0x203, 0x204};
+
+  CanBus::ClassicPack pack_group2;
+  pack_group2.type = CanBus::Type::STANDARD;
+  const uint32_t motor_group2_ids[4] = {0x205, 0x206, 0x207, 0x208};
+  uint8_t len = 8;
 
   for (;;) {
-    // 一帧固定打包 4 个槽位：0x201~0x204
-    pack.id = 0x200; // DJI Group 2
-    int16_t commands[4] = {0};
-    commands[0] = static_cast<int16_t>(chassis_motor1.cmdTrans()); // 0x201
-    commands[1] = static_cast<int16_t>(chassis_motor2.cmdTrans()); // 0x202
-    commands[2] = static_cast<int16_t>(chassis_motor3.cmdTrans()); // 0x203   
-    commands[3] = static_cast<int16_t>(chassis_motor4.cmdTrans()); // 0x204
-    packDJIMotorCanMsg(pack.id, chassis_motor_ids, commands, 4, pack.data, len);
-    fdcan3_bus.addCanMsg(pack);
+
+    pack_group1.id = 0x200; // DJI Group 1
+    int16_t commands_group1[4] = {0};
+    commands_group1[0] = static_cast<int16_t>(0); // 0x201
+    commands_group1[1] = static_cast<int16_t>(0); // 0x202
+    commands_group1[2] = static_cast<int16_t>(0); // 0x203   
+    commands_group1[3] = static_cast<int16_t>(0); // 0x204
+    packDJIMotorCanMsg(pack_group1.id, motor_group1_ids, commands_group1, 4, pack_group1.data, len);
+    fdcan3_bus.addCanMsg(pack_group1);
+
+    // 一帧固定打包 2 个槽位：0x205~0x206
+    pack_group2.id = 0x1FF; // DJI Group 2
+    int16_t commands_group2[4] = {0};
+    commands_group2[0] = static_cast<int16_t>(0); // 0x205
+    commands_group2[1] = static_cast<int16_t>(0); // 0x206
+    commands_group2[2] = static_cast<int16_t>(0); // 0x207
+    commands_group2[3] = static_cast<int16_t>(0); // 0x208
+    packDJIMotorCanMsg(pack_group2.id, motor_group2_ids, commands_group2, 4, pack_group2.data, len);
+    fdcan3_bus.addCanMsg(pack_group2);
+
     vTaskDelayUntil(&currentTime, 1); // 每1ms执行一次发送任务
   }
 }
@@ -454,22 +464,9 @@ void DebugSerialTask(void *argument) {
   for(;;)
   {
     //电机在线检测
-    title[0] =  chassis_motor1.isOffline() ? 'X' : 'O';
-    title[1] =  chassis_motor2.isOffline() ? 'X' : 'O';
-    title[2] =  chassis_motor3.isOffline() ? 'X' : 'O';
-    title[3] =  chassis_motor4.isOffline() ? 'X' : 'O';
-    // title[4] =  arm2006_motor.isOffline() ? 'X' : 'O';
-    // title[4] =  arm3508_motor.isOffline() ? 'X' : 'O';
-    title[4] =  arm4310_motor.isOffline() ? 'X' : 'O';
+    // title[0] =  chassis_motor1.isOffline() ? 'X' : 'O';
 
-
-    motor_status_data.chassis_motor1 = chassis_motor1.isOffline();
-    motor_status_data.chassis_motor2 = chassis_motor2.isOffline();
-    motor_status_data.chassis_motor3 = chassis_motor3.isOffline();
-    motor_status_data.chassis_motor4 = chassis_motor4.isOffline();
-    // motor_status_data.arm2006_motor = arm2006_motor.isOffline();
-    // motor_status_data.arm3508_motor = arm3508_motor.isOffline();
-    motor_status_data.arm4310_motor = arm4310_motor.isOffline();
+    // motor_status_data.chassis_motor1 = chassis_motor1.isOffline();
 
     motor_status_pub.Publish(motor_status_data);
 

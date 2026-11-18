@@ -28,30 +28,26 @@
 #include "tool.hpp"
 #include "topic_pool.h"
 #include <functional>
+struct PlanParam {
+    float Acc;
+    float Dec;
+    float w_Max;
+
+    PlanParam(float Acc_in = M_PI, float Dec_in = M_PI, float w_Max_in = 10*M_PI)
+        :Acc(Acc_in), Dec(Dec_in), w_Max(w_Max_in){}
+};
+enum class Control_Improvement{
+    NONE,
+    SPEEDPLAN,
+    COSPLAN,
+    POLYNOMIAL
+};
 
 template <std::size_t dimensions>
 class ControlOptimizer {
 public:
-    using ValueType = std::conditional_t<
-        dimensions == 1,
-        float,
-        std::array<float, dimensions>
-    >;
+    using DimValues = std::array<float, dimensions>;
     
-    enum class Control_Improvement{
-        NONE,
-        SPEEDPLAN,
-        COSPLAN,
-        POLYNOMIAL
-    };
-    struct PlanParam {
-        float Acc;
-        float Dec;
-        float w_Max;
-
-        PlanParam(float Acc_in = M_PI, float Dec_in = M_PI, float w_Max_in = 10*M_PI)
-            :Acc(Acc_in), Dec(Dec_in), w_Max(w_Max_in){}
-    };
     struct TrajectParam {
         float ref{0};
         float start{0};
@@ -66,6 +62,14 @@ public:
         float delat_ref(){ return traget - ref; }
         float delat_now_start(){ return now - start; }
     };
+    
+    void init(Control_Improvement improvement,PlanParam planparam,PidParam pidparam){
+        ConfigImprovement(improvement);
+        ConfigPlanParam(planparam);
+        ConfigPid(pidparam);
+    }
+
+    void Reset_is_init(){ is_init = false;}
 
     void ConfigImprovement( Control_Improvement Improvement){
         Improvement_ = Improvement;
@@ -73,15 +77,25 @@ public:
     void ConfigPlanParam(const PlanParam &plan_param){
         plan_param_ = plan_param;
     }
-    void ConfigPid(PID_t pid_in){
-        track_path_pid_ = pid_in;
+    void ConfigPid(PidParam param){
+        applyPidParam(track_path_pid_,param);
         for(std::size_t i = 0; i < dimensions; ++i){
-            track_lateral_pid_[i] = pid_in;
+            applyPidParam(track_lateral_pid_[i],param);
         }
+    }
+    void applyPidParam(PID_t& pid, PidParam param) {
+        pid = {};
+        pid.Kp = param.kp;
+        pid.Ki = param.ki;
+        pid.Kd = param.kd;
+        pid.MaxOut = param.max_out;
+        pid.DeadBand = param.deadband;
+        pid.Improve = param.improve;
+        PID_Init(&pid);
     }
     bool is_Change(std::array<float, dimensions> now, std::array<float, dimensions> last){
         for(std::size_t i = 0; i < dimensions; ++i){
-            if(fabs(now[i] - last[i]) >= 0.001f)return true;
+            if(fabs(now[i] - last[i]) >= 0.0001f)return true;
         }
         return false;
     }
@@ -91,38 +105,23 @@ public:
         }
         return true;
     }
-    void init(std::array<float, dimensions> &traget_last){
-        if(!is_init){
-            for(std::size_t i = 0; i < dimensions; ++i){
-                traget_last[i] = traj_param_components_[i].now;
-            }
-            is_init = !is_init;
-        }
-    }
-    void Set(ValueType traget_pos, ValueType actual_pos,
+    void Set(std::array<float, dimensions> traget_pos, std::array<float, dimensions> actual_pos,
             std::optional<float> T = std::nullopt){
         std::array<float, dimensions> traget_now{0};
         std::array<float, dimensions> traget_last{0};
-        float magnitude_tmp;
+        float magnitude_tmp = 0.0f;
+        float component_max = 0.0f;
         
-        if constexpr (dimensions == 1) {
-            traj_param_components_[0].traget = traget_pos;
-            traj_param_components_[0].now = actual_pos;
-            traget_now[0] = traj_param_components_[0].traget;
-            traget_last[0] = traj_param_components_last_[0].traget;
-            magnitude_tmp = fabs(traj_param_components_[0].delat_now());
-        }else{
-            float sum_sq = 0.0f;
-            for(std::size_t i = 0; i < dimensions; ++i){
-                traj_param_components_[i].traget = traget_pos[i];
-                traj_param_components_[i].now = actual_pos[i];
-                traget_now[i] = traj_param_components_[i].traget;
-                traget_last[i] = traj_param_components_last_[i].traget;
-                sum_sq += (traj_param_components_[i].delat_now())*(traj_param_components_[i].delat_now());
-            }
-            magnitude_tmp = sqrtf(sum_sq);
+        float sum_sq = 0.0f;
+        for(std::size_t i = 0; i < dimensions; ++i){
+            traj_param_components_[i].traget = traget_pos[i];
+            traj_param_components_[i].now = actual_pos[i];
+            traget_now[i] = traj_param_components_[i].traget;
+            traget_last[i] = traj_param_components_last_[i].traget;
+            sum_sq += (traj_param_components_[i].delat_now())*(traj_param_components_[i].delat_now());
+            component_max = std::max(component_max,abs(traj_param_components_[i].delat_now()));
         }
-        // if(magnitude_tmp < 0.001f)magnitude_tmp = 0.001f;
+        magnitude_tmp = sqrtf(sum_sq);
 
         if(!is_init || is_Change(traget_now,traget_last)){
             is_init = true;
@@ -135,39 +134,48 @@ public:
             }
 
             is_finish = false;
+            output_path_ff_ = 0.0f;
             traj_param_magnitude_.start = 0.0f;
             traj_param_magnitude_.ref = 0.0f;
             traj_param_magnitude_.t = 0.0f;
             traj_param_magnitude_.traget = magnitude_tmp;
+
+            float ration = magnitude_tmp / component_max;
+            if(component_max < 0.0001f) ration = 1.0f;
+            path_param_.Acc = plan_param_.Acc * ration;
+            path_param_.Dec = plan_param_.Dec * ration;
+            path_param_.w_Max = plan_param_.w_Max * ration;
+
             if(T.has_value()){
                 traj_param_magnitude_.auto_calculate_T = false;
                 traj_param_magnitude_.T = *T;
             }else {
                 traj_param_magnitude_.auto_calculate_T = true;
             }
+
+            traj_param_magnitude_last_ = traj_param_magnitude_;
+            traj_param_components_last_ = traj_param_components_;
         }
     }
 
-    void Run(){
-        if constexpr (dimensions == 1) {
-            traj_param_magnitude_.now = unit_direction_[0]*traj_param_components_[0].delat_now_start();
-        }else{
-            float projection = 0.0f; // 点积
-            for(std::size_t i = 0; i < dimensions; ++i){
-                projection += unit_direction_[i]*traj_param_components_[i].delat_now_start();
-            }
-            correction_ = vectorToLine(projection);
-            traj_param_magnitude_.now = projection;
+    void Run(std::array<float, dimensions> traget_pos, std::array<float, dimensions> actual_pos,
+            std::optional<float> T = std::nullopt){
+
+        Set(traget_pos,actual_pos,T);
+
+        float projection = 0.0f; // 点积
+        for(std::size_t i = 0; i < dimensions; ++i){
+            projection += unit_direction_[i]*traj_param_components_[i].delat_now_start();
         }
+        correction_ = vectorToLine(projection);
+        traj_param_magnitude_.now = projection;
 
         if(is_point_hold_){
             output_path_ff_ = 0.0f;
-            if constexpr (dimensions == 1){
-                pos_output_components_[0] = PID_Calculate(&track_lateral_pid_[0], traj_param_components_[0].now, traj_param_components_[0].traget);
-            }else{
-                for(std::size_t i = 0; i < dimensions; ++i){
-                    pos_output_components_[i] = PID_Calculate(&track_lateral_pid_[i], traj_param_components_[i].now, traj_param_components_[i].traget);
-                }
+            traj_param_magnitude_.ref = traj_param_magnitude_.traget;
+            for(std::size_t i = 0; i < dimensions; ++i){
+                pos_output_components_[i] = PID_Calculate(&track_lateral_pid_[i], traj_param_components_[i].now, traj_param_components_[i].traget);
+                traj_param_components_[i].ref = traj_param_components_[i].traget;
             }
         }else {
             dt = DWT_GetDeltaT(&DWT_CNT);
@@ -179,11 +187,8 @@ public:
                 else output_lateral_pid_[i] = 0.0f;
                 pos_output_components_[i] = pos_output_path_*unit_direction_[i] + output_lateral_pid_[i];
                 traj_param_components_[i].ref = traj_param_components_[i].start + traj_param_magnitude_.ref*unit_direction_[i];
-            }    
+            }
         }
-        
-        traj_param_magnitude_last_ = traj_param_magnitude_;
-        traj_param_components_last_ = traj_param_components_;
 
         is_finish = true;
         for(std::size_t i = 0; i < dimensions; ++i){
@@ -206,23 +211,15 @@ public:
         return correction;
     }
 
-    ValueType GetSpeedOutput(){
-        if constexpr (dimensions == 1) {
-            return pos_output_components_[0];
-        }else{
-            return pos_output_components_; 
-        }
+    std::array<float, dimensions> GetSpeedOutput(){
+        return pos_output_components_; 
     }
-    ValueType GetPosRef(){
-        if constexpr (dimensions == 1){
-            return traj_param_components_[0].ref;
-        }else {
-            std::array<float, dimensions> result{};
-            for(std::size_t i = 0; i < dimensions; ++i){
-                result[i] = traj_param_components_[i].ref;
-            }
-            return result;
+    std::array<float, dimensions> GetPosRef(){
+        std::array<float, dimensions> result{};
+        for(std::size_t i = 0; i < dimensions; ++i){
+            result[i] = traj_param_components_[i].ref;
         }
+        return result;
     }
     bool Getfinish(){ return is_finish; }
    
@@ -248,16 +245,16 @@ private:
     }
     float PointTrackSolution(float &output_pid, TrajectParam &traj_param){
         output_pid = PID_Calculate(&track_path_pid_,traj_param.now,traj_param.traget);
-        traj_param.ref = traj_param.now;
+        traj_param.ref = traj_param.traget;
         return output_pid;
     }
     float PlanSpeedSolution(float &output_ff, float &output_pid, TrajectParam &traj_param){
         float previous_speed = output_ff;
         // float delat_ref = traget_pos - pos_ref;
-        float w_Acc = output_ff + sign(traj_param.delat_ref())*plan_param_.Acc*dt;
-        float w_Dec = sign(traj_param.delat_ref())*sqrt(2.0f*plan_param_.Dec*fabs(traj_param.delat_ref()));
-        if(plan_param_.w_Max < fabs(w_Acc) && plan_param_.w_Max < fabs(w_Dec)){
-            output_ff = sign(traj_param.delat_ref())*plan_param_.w_Max;
+        float w_Acc = output_ff + sign(traj_param.delat_ref())*path_param_.Acc*dt;
+        float w_Dec = sign(traj_param.delat_ref())*sqrt(2.0f*path_param_.Dec*fabs(traj_param.delat_ref()));
+        if(path_param_.w_Max < fabs(w_Acc) && path_param_.w_Max < fabs(w_Dec)){
+            output_ff = sign(traj_param.delat_ref())*path_param_.w_Max;
         }else if(fabs(w_Acc) > fabs(w_Dec) && sign(w_Acc)==sign(w_Dec)){
             output_ff = w_Dec;
         }else {
@@ -268,7 +265,7 @@ private:
         return output_ff + output_pid;
     }
     float CosSpeedSolution(float &output_ff, float &output_pid, TrajectParam &traj_param){
-        if(traj_param.auto_calculate_T)traj_param.T = fabs(traj_param.delat_traj()*M_PI*sinf(M_PI*0.5f)/(2.0f*plan_param_.w_Max));
+        if(traj_param.auto_calculate_T)traj_param.T = fabs(traj_param.delat_traj()*M_PI*sinf(M_PI*0.5f)/(2.0f*path_param_.w_Max));
     
         float s_now = traj_param.delat_now()/traj_param.delat_traj();
         s_now = ( s_now > 1.0f ) ? 1.0f : s_now ;
@@ -283,7 +280,7 @@ private:
         return output_ff + output_pid;
     }
     float QuinticPolynomialSpeedSolution(float &output_ff, float &output_pid, TrajectParam &traj_param){
-        if(traj_param.auto_calculate_T)traj_param.T = fabs(traj_param.delat_traj()*( 30.0f*0.5f*0.5f - 60.0f*0.5f*0.5f*0.5f + 30.0f*0.5f*0.5f*0.5f*0.5f )/plan_param_.w_Max);
+        if(traj_param.auto_calculate_T)traj_param.T = fabs(traj_param.delat_traj()*( 30.0f*0.5f*0.5f - 60.0f*0.5f*0.5f*0.5f + 30.0f*0.5f*0.5f*0.5f*0.5f )/path_param_.w_Max);
  
         float s_now = traj_param.delat_now()/traj_param.delat_traj();
         s_now = ( s_now > 1.0f ) ? 1.0f : s_now ;
@@ -316,6 +313,7 @@ private:
     std::array<float, dimensions> correction_{0};
     std::array<float, dimensions> output_lateral_pid_{0};
     PlanParam plan_param_;
+    PlanParam path_param_;
     TrajectParam traj_param_magnitude_;
     TrajectParam traj_param_magnitude_last_;
     std::array<TrajectParam, dimensions> traj_param_components_;
