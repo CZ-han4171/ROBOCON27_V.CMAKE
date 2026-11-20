@@ -52,4 +52,33 @@ void RobotDevices_Init() {
     fdcan2_bus.init();
     fdcan3_bus.init();
 
+    chassis_motor1.init();
+    chassis_motor2.init();
+    chassis_motor3.init();
+    chassis_motor4.init();
+    chassis_controller1.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    chassis_controller2.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    chassis_controller3.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    chassis_controller4.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    Omni_Chassis.init(Control_Improvement::NONE,M3508_P19_PlanParam, M3508_P19_PosPid);
+
+    chassis_lift_motor1.init();
+    chassis_lift_motor2.init();
+    chassis_lift_motor3.init();
+    chassis_lift_motor4.init();
+    chassis_lift_controller1.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    chassis_lift_controller2.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    chassis_lift_controller3.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    chassis_lift_controller4.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
+    chassis_Lift.init(Control_Improvement::COSPLAN,M3508_P19_PlanParam, M3508_P19_PosPid);
+    chassis_Lift.ConfigAutoHome({0,1},
+                                {{AutoHomeParam_meter,-0.024f},{AutoHomeParam_meter,-0.024f}});
+    chassis_Lift.ConfigLimit({0,1},
+                             {{0.0f,0.33f},{0.0f,0.33f}});
+
+    lift_Drive_motor1.init();
+    lift_Drive_motor2.init();
+    lift_Drive_controller1.init(M2006_P38_SpeedPid,M2006_P38_PosPid);
+    lift_Drive_controller2.init(M2006_P38_SpeedPid,M2006_P38_PosPid);
+    LiftDrive.init(Control_Improvement::NONE,M2006_P38_PlanParam, M2006_P38_PosPid);
  }

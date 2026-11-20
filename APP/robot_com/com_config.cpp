@@ -165,6 +165,20 @@ uint8_t comServiceInit() {
   canFilterInit(&hfdcan3, FDCAN_EXTENDED_ID, FDCAN_FILTER_TO_RXFIFO1, 0, 0);
   bspCanInit(&hfdcan3);
 
+  // can设备注册
+  fdcan3_bus.registerDevice(&chassis_motor1);
+  fdcan3_bus.registerDevice(&chassis_motor2);
+  fdcan3_bus.registerDevice(&chassis_motor3);
+  fdcan3_bus.registerDevice(&chassis_motor4);
+
+  fdcan2_bus.registerDevice(&chassis_lift_motor1);
+  fdcan2_bus.registerDevice(&chassis_lift_motor2);
+  fdcan2_bus.registerDevice(&chassis_lift_motor3);
+  fdcan2_bus.registerDevice(&chassis_lift_motor4);
+
+  fdcan1_bus.registerDevice(&lift_Drive_motor1);
+  fdcan1_bus.registerDevice(&lift_Drive_motor2);
+
   // 串口外设
   uart2_rx_semphore = osSemaphoreNew(1, 0, NULL);
   if (uart2_rx_semphore == NULL || uart2_port.startRx() != HAL_OK) {
@@ -251,8 +265,8 @@ void can1SendTask(void *argument) {
 
     pack_group1.id = 0x200; // DJI Group 1
     int16_t commands_group1[4] = {0};
-    commands_group1[0] = static_cast<int16_t>(0); // 0x201
-    commands_group1[1] = static_cast<int16_t>(0); // 0x202
+    commands_group1[0] = static_cast<int16_t>(lift_Drive_motor1.cmdTrans()); // 0x201
+    commands_group1[1] = static_cast<int16_t>(lift_Drive_motor2.cmdTrans()); // 0x202
     commands_group1[2] = static_cast<int16_t>(0); // 0x203   
     commands_group1[3] = static_cast<int16_t>(0); // 0x204
     packDJIMotorCanMsg(pack_group1.id, motor_group1_ids, commands_group1, 4, pack_group1.data, len);
@@ -286,10 +300,10 @@ void can2SendTask(void *argument) {
   for (;;) {
     pack_group1.id = 0x200; // DJI Group 1
     int16_t commands_group1[4] = {0};
-    commands_group1[0] = static_cast<int16_t>(0); // 0x201
-    commands_group1[1] = static_cast<int16_t>(0); // 0x202
-    commands_group1[2] = static_cast<int16_t>(0); // 0x203   
-    commands_group1[3] = static_cast<int16_t>(0); // 0x204
+    commands_group1[0] = static_cast<int16_t>(chassis_lift_motor1.cmdTrans()); // 0x201
+    commands_group1[1] = static_cast<int16_t>(chassis_lift_motor2.cmdTrans()); // 0x202
+    commands_group1[2] = static_cast<int16_t>(chassis_lift_motor3.cmdTrans()); // 0x203   
+    commands_group1[3] = static_cast<int16_t>(chassis_lift_motor4.cmdTrans()); // 0x204
     packDJIMotorCanMsg(pack_group1.id, motor_group1_ids, commands_group1, 4, pack_group1.data, len);
     fdcan2_bus.addCanMsg(pack_group1);
 
@@ -323,10 +337,10 @@ void can3SendTask(void *argument) {
 
     pack_group1.id = 0x200; // DJI Group 1
     int16_t commands_group1[4] = {0};
-    commands_group1[0] = static_cast<int16_t>(0); // 0x201
-    commands_group1[1] = static_cast<int16_t>(0); // 0x202
-    commands_group1[2] = static_cast<int16_t>(0); // 0x203   
-    commands_group1[3] = static_cast<int16_t>(0); // 0x204
+    commands_group1[0] = static_cast<int16_t>(chassis_motor1.cmdTrans()); // 0x201
+    commands_group1[1] = static_cast<int16_t>(chassis_motor2.cmdTrans()); // 0x202
+    commands_group1[2] = static_cast<int16_t>(chassis_motor3.cmdTrans()); // 0x203   
+    commands_group1[3] = static_cast<int16_t>(chassis_motor4.cmdTrans()); // 0x204
     packDJIMotorCanMsg(pack_group1.id, motor_group1_ids, commands_group1, 4, pack_group1.data, len);
     fdcan3_bus.addCanMsg(pack_group1);
 

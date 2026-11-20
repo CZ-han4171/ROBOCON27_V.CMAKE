@@ -15,6 +15,7 @@
 #include "chassis_solution.hpp"
 #include "main.h"
 #include "control_task.h"
+#include "robot_params.hpp"
 #include "pid_controller.hpp"
 #include "chassis_task.h"
 #include "rm_pocket.hpp"
@@ -38,13 +39,17 @@ osThreadId_t ControlTaskHandle;
 
 // ===== 发布者 =====
 TypedTopicPublisher<pub_chassis_cmd> chassis_data_pub("chassis_cmd");
-pub_chassis_cmd rm_cmd{};
+pub_chassis_cmd chassis_pub_cmd{};
+pub_chassis_cmd chassis_raw_cmd{};
+
+TypedTopicPublisher<pub_chassis_lift_cmd> chassis_lift_data_pub("chassis_lift_cmd");
+pub_chassis_lift_cmd chassis_lift_pub_cmd{};
+pub_chassis_lift_cmd chassis_lift_raw_cmd{};
 
 TypedTopicSubscriber<pub_RM_Data> control_rm_sub("rm", 8);
 pub_RM_Data control_rm_cmd{};
-pub_RM_Data control_rm_cmd_last{};
+pub_RM_Data control_rm_last_cmd{};
 
-pub_chassis_cmd robot_v_aim_cmd{};
 pub_chassis_cmd state_now_cmd{};
 
 //debug begin
@@ -79,6 +84,8 @@ void controlTask(void *argument) {
     for (;;) {
 
         const TickType_t now = xTaskGetTickCount();
+
+        control_rm_last_cmd = control_rm_cmd;
         if (control_rm_sub.TryGet(&control_rm_cmd)) {
             rmUpdateTime = now;
         } else if (now - rmUpdateTime > kRemoteInputTimeout) {
@@ -87,18 +94,40 @@ void controlTask(void *argument) {
             control_rm_cmd.joyRHori = kJoyCenter;
             control_rm_cmd.joyRVert = kJoyCenter;
         }
-        control_rm_cmd_last = control_rm_cmd;
 
         {
-            rm_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
-            rm_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
-            rm_cmd.omega_    = -JoyToVelocity(control_rm_cmd.joyRHori, kJoyDeadZoneRight, MAX_VELOCITY_ANGULAR);
+            chassis_raw_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
+            chassis_raw_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
+            chassis_raw_cmd.omega_    = -JoyToVelocity(control_rm_cmd.joyRHori, kJoyDeadZoneRight, MAX_VELOCITY_ANGULAR);
 
-            float rm_angle_deg = atan2(rm_cmd.linear_y_, rm_cmd.linear_x_) / kDegToRad;
-            float v_aim = sqrt(rm_cmd.linear_x_ * rm_cmd.linear_x_ + rm_cmd.linear_y_ * rm_cmd.linear_y_);
-            robot_v_aim_cmd.linear_x_ = v_aim * cos((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
-            robot_v_aim_cmd.linear_y_ = v_aim * sin((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
-            robot_v_aim_cmd.omega_ = rm_cmd.omega_;    
+            float rm_angle_deg = atan2(chassis_raw_cmd.linear_y_, chassis_raw_cmd.linear_x_) / kDegToRad;
+            float v_aim = sqrt(chassis_raw_cmd.linear_x_ * chassis_raw_cmd.linear_x_ + chassis_raw_cmd.linear_y_ * chassis_raw_cmd.linear_y_);
+            chassis_pub_cmd.linear_x_ = v_aim * cos((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
+            chassis_pub_cmd.linear_y_ = v_aim * sin((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
+            chassis_pub_cmd.omega_ = chassis_raw_cmd.omega_;
+        }
+
+        {
+            chassis_lift_pub_cmd.speed_x_ = chassis_pub_cmd.linear_x_;
+            if(control_rm_cmd.swC != control_rm_last_cmd.swC
+               && control_rm_last_cmd.swC == RM_3_POS_SW_State_t::MIDDLE){
+                if(control_rm_cmd.swC == RM_3_POS_SW_State_t::UP){
+                    chassis_lift_pub_cmd.height_front_ = chassis_lift_MIDDLE;
+                    chassis_lift_pub_cmd.height_hind_ = chassis_lift_MIDDLE;
+                }else if(control_rm_cmd.swC == RM_3_POS_SW_State_t::DOWN){
+                    chassis_lift_pub_cmd.height_front_ = chassis_lift_DOWN;
+                    chassis_lift_pub_cmd.height_hind_ = chassis_lift_DOWN;
+                }
+            }else if(control_rm_cmd.swB != control_rm_last_cmd.swB 
+                     && control_rm_last_cmd.swB == RM_3_POS_SW_State_t::MIDDLE){
+                if(control_rm_cmd.swB == RM_3_POS_SW_State_t::UP){
+                    if(chassis_lift_pub_cmd.height_front_ == chassis_lift_MIDDLE)chassis_lift_pub_cmd.height_front_ = chassis_lift_DOWN;
+                    else if(chassis_lift_pub_cmd.height_front_ == chassis_lift_DOWN)chassis_lift_pub_cmd.height_front_ = chassis_lift_MIDDLE;
+                }else if(control_rm_cmd.swB == RM_3_POS_SW_State_t::DOWN){
+                    if(chassis_lift_pub_cmd.height_hind_ == chassis_lift_MIDDLE)chassis_lift_pub_cmd.height_hind_ = chassis_lift_DOWN;
+                    else if(chassis_lift_pub_cmd.height_hind_ == chassis_lift_DOWN)chassis_lift_pub_cmd.height_hind_ = chassis_lift_MIDDLE;
+                }
+            }
         }
 
         {   
@@ -107,7 +136,8 @@ void controlTask(void *argument) {
             /////////////////debug end///////////////////////
         }
 
-        chassis_data_pub.Publish(robot_v_aim_cmd);
+        chassis_lift_data_pub.Publish(chassis_lift_pub_cmd);
+        chassis_data_pub.Publish(chassis_pub_cmd);
 
         vTaskDelayUntil(&currentTime, 1);
     }

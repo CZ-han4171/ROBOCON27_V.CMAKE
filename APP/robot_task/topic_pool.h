@@ -74,23 +74,6 @@ typedef struct {
   float roll_rad;  // 滚转角
 } pub_imu_data;
 
-typedef struct{
-  float Acc_linear;
-  float Dec_linear;
-  float v_Max;
-
-  float Acc_omega;
-  float Dec_omega;
-  float w_Max;
-} speed_plan;
-
-typedef struct {
-    float_t Acc_linear;
-    float_t Dec_linear;
-    float_t v_Max;
-    float_t w_Max;
-} speed_data;
-
 typedef struct {
   bool chassis_motor1;
   bool chassis_motor2;
@@ -108,19 +91,12 @@ typedef struct {
   float omega_;
 } pub_chassis_cmd;
 
-// 底盘速度
+// 发布底盘抬升运动指令
 typedef struct {
-  float vx;
-  float vy;
-  float w;
-} chassis_speed;
-
-// 底盘定位
-typedef struct {
-  float x;
-  float y;
-  float yaw;
-} chassis_position;
+  float speed_x_;
+  float height_front_;
+  float height_hind_;
+} pub_chassis_lift_cmd;
 
 //Position模块数据结构体
 typedef struct {
