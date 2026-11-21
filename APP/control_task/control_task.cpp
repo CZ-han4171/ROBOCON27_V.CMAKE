@@ -47,6 +47,10 @@ pub_RM_Data control_rm_cmd_last{};
 pub_chassis_cmd robot_v_aim_cmd{};
 pub_chassis_cmd state_now_cmd{};
 
+// 状态机（fsm_task）输出的底盘指令
+TypedTopicSubscriber<pub_chassis_cmd> fsm_chassis_cmd_sub("fsm_chassis_cmd", 8);
+pub_chassis_cmd fsm_cmd{};
+
 //debug begin
 float_t debug_dt;
 uint32_t debug_DWT_CNT;
@@ -68,6 +72,8 @@ void controlTask(void *argument) {
     TickType_t currentTime = xTaskGetTickCount();
     TickType_t rmUpdateTime = currentTime;
     constexpr TickType_t kRemoteInputTimeout = pdMS_TO_TICKS(500);
+    constexpr TickType_t kFsmCmdTimeout = pdMS_TO_TICKS(30);
+    TickType_t fsmCmdUpdateTime = currentTime - kFsmCmdTimeout - 1;
 
     control_rm_cmd.joyLHori = kJoyCenter;
     control_rm_cmd.joyLVert = kJoyCenter;
@@ -75,6 +81,8 @@ void controlTask(void *argument) {
     control_rm_cmd.joyRVert = kJoyCenter;
     
     controlInit();
+
+    bool last_auto_mode = false;
 
     for (;;) {
 
@@ -107,7 +115,21 @@ void controlTask(void *argument) {
             /////////////////debug end///////////////////////
         }
 
-        chassis_data_pub.Publish(robot_v_aim_cmd);
+        if (fsm_chassis_cmd_sub.TryGet(&fsm_cmd)) {
+            fsmCmdUpdateTime = now;
+        } else if (now - fsmCmdUpdateTime > kFsmCmdTimeout) {
+            fsm_cmd = pub_chassis_cmd{};   // 状态机断流 -> 清零，避免底盘一直跑最后一条指令
+        }
+        const bool auto_mode = (control_rm_cmd.swD == RM_2_POS_SW_State_t::DOWN);
+
+        if (auto_mode != last_auto_mode) {
+            last_auto_mode = auto_mode;
+            chassis_data_pub.Publish(pub_chassis_cmd{});   // 切换瞬间先发一次 0
+        } else if (auto_mode) {
+            chassis_data_pub.Publish(fsm_cmd);
+        } else {
+            chassis_data_pub.Publish(robot_v_aim_cmd);
+        }
 
         vTaskDelayUntil(&currentTime, 1);
     }

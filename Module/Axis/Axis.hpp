@@ -209,10 +209,11 @@ public:
         optimizer_.init(improvement,planparam,pidparam);
     };
 
-    virtual void UpdateAxisData();
+    
+    virtual void UpdateAxisData(){}
 
-    virtual void setAxisPos(ControlFloatArray Axis_pos,std::optional<float> T = std::nullopt);
-    virtual void setAxisSpeed(ControlFloatArray Axis_speed);
+    virtual void setAxisPos(ControlFloatArray Axis_pos,std::optional<float> T = std::nullopt){(void)Axis_pos;(void)T;}
+    virtual void setAxisSpeed(ControlFloatArray Axis_speed){(void)Axis_speed;}
     virtual ControlFloatArray getAxisPos(){ return Axis_actual_pos_; };
     virtual ControlFloatArray getAxisSpeed(){ return Axis_actual_speed_; };
 

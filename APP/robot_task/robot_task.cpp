@@ -25,6 +25,7 @@
 #include "com_config.hpp"
 #include "control_task.h"
 #include "debug_task.h"
+#include "fsm_task.h"
 
 /* module层接口头文件 */
 
@@ -40,6 +41,7 @@ extern osThreadId_t uart5ProcessTaskHandle;
 extern osThreadId_t Debug_TaskHandle;
 extern osThreadId_t ChassisTaskHandle;
 extern osThreadId_t ControlTaskHandle;
+extern osThreadId_t FsmTaskHandle;
 extern osThreadId_t usbcdcProcessTaskHandle;
 extern osThreadId_t usbcdcSendTaskHandle;
 extern osThreadId_t DebugSerialTaskHandle;
@@ -92,6 +94,12 @@ void osTaskInit(void) {
   };
   ControlTaskHandle =
       osThreadNew(controlTask, NULL, &ControlTaskHandle_attributes);
+  const osThreadAttr_t FsmTaskHandle_attributes = {
+      .name = "Fsm_TaskHandle",
+      .stack_size = 512 * 4,
+      .priority = (osPriority_t)osPriorityNormal,
+  };
+  FsmTaskHandle = osThreadNew(fsmTask, NULL, &FsmTaskHandle_attributes);
 
       //uart2用于同IMU串口通信
   const osThreadAttr_t Uart2ProcessTaskHandle_attributes = {

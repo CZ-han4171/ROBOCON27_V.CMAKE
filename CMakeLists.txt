@@ -62,7 +62,7 @@ function(include_sub_directories_recursively root_dir)
 endfunction()
 
 #递归添加用户源文件
-file(GLOB_RECURSE SOURCES
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "APP/*.c"
     "APP/*.cpp"
     "BSP/*.c"
@@ -86,6 +86,8 @@ include_sub_directories_recursively(${CMAKE_SOURCE_DIR}/APP)
 include_sub_directories_recursively(${CMAKE_SOURCE_DIR}/BSP)
 include_sub_directories_recursively(${CMAKE_SOURCE_DIR}/Module)
 include_sub_directories_recursively(${CMAKE_SOURCE_DIR}/Algorithm)
+# 第三方库头文件（HFSM2 v2.12.1，header-only）
+include_sub_directories_recursively(${CMAKE_SOURCE_DIR}/ThirdParty)
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
