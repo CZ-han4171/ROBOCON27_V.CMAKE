@@ -68,7 +68,7 @@ DJIMotorController chassis_controller3(chassis_motor3);
 DJIMotorController chassis_controller4(chassis_motor4);
 
 GeneralAxis<4,4> Omni_Chassis({{{&chassis_controller1},{&chassis_controller2},{&chassis_controller3},{&chassis_controller4}}},
-                            {1.0f,1.0f,1.0f,1.0f});
+                            {-1.0f,-1.0f,-1.0f,-1.0f});
 
 
 C620Motor chassis_lift_motor1(&fdcan2_bus, 0x201, 0, 0x200, 0); 
@@ -81,7 +81,7 @@ DJIMotorController chassis_lift_controller3(chassis_lift_motor3);
 DJIMotorController chassis_lift_controller4(chassis_lift_motor4);
 
 GeneralAxis<2,4> chassis_Lift({{{&chassis_lift_controller1,&chassis_lift_controller2},{&chassis_lift_controller3,&chassis_lift_controller4}}},
-                            {-2*M_PI/(0.045f*M_PI),2*M_PI/(0.045f*M_PI),-2*M_PI/(0.045f*M_PI),2*M_PI/(0.045f*M_PI)});
+                            {2*M_PI/(0.045f*M_PI),-2*M_PI/(0.045f*M_PI),-2*M_PI/(0.045f*M_PI),2*M_PI/(0.045f*M_PI)});
 
 
 C610Motor lift_Drive_motor1(&fdcan1_bus, 0x201, 0, 0x200, 0);

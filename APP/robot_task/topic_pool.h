@@ -93,9 +93,9 @@ typedef struct {
 
 // 发布底盘抬升运动指令
 typedef struct {
-  float speed_x_;
-  float height_front_;
-  float height_hind_;
+  float speed_x_{0};
+  float height_front_{0};
+  float height_hind_{0};
 } pub_chassis_lift_cmd;
 
 //Position模块数据结构体

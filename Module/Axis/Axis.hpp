@@ -27,7 +27,7 @@
 #include "tool.hpp"
 #include <initializer_list>
 
-#define stall_timeout_s_ 1.0f // 自动归位检测时长
+#define stall_timeout_s_ 3.0f // 自动归位检测时长
 #define unstuck_timeout_s_ 0.05f // 判断电机正常运转时长
 
 template <std::size_t ControlCount,std::size_t MotorCount> // 控制对象个数，电机个数

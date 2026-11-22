@@ -23,6 +23,7 @@
 #include "topic_pool.h"
 #include "topics.hpp"
 #include "robot_devices.hpp"
+#include "robot_params.hpp"
 #include <array>
 #include <math.h>
 #include <sys/types.h>
@@ -43,7 +44,7 @@ PidParam SwerveSteer_M2006_SpeedPid(3000.0f, 16600.0f, 0.0f, 10000.0f, 0.0f, IMC
 PidParam SwerveSteer_M2006_PosPid(3.0f,0.8f,0.0f,25.0f*M_PI,0.05f*kDegToRad,NONE);
 PlanParam SwerveSteer_M2006_PlanParam(100.0f*M_PI,100.0f*M_PI, 10.0f*M_PI);
 
-MitParam AutoHomeParam_meter(-0.1f,0.0f,0.0f,0.0f,10.0f);
+MitParam AutoHomeParam_meter(-0.25f,0.0f,0.0f,0.0f,200.0f);
 MitParam AutoHomeParam_rad(-M_PI,0.0f,0.0f,0.0f,1.0f);
 
 void RobotDevices_Init() {
@@ -70,11 +71,13 @@ void RobotDevices_Init() {
     chassis_lift_controller2.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
     chassis_lift_controller3.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
     chassis_lift_controller4.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
-    chassis_Lift.init(Control_Improvement::COSPLAN,M3508_P19_PlanParam, M3508_P19_PosPid);
+    chassis_Lift.init(Control_Improvement::SPEEDPLAN,
+                    {0.5f,0.6f,1.0f},
+                    M3508_P19_PosPid);
     chassis_Lift.ConfigAutoHome({0,1},
-                                {{AutoHomeParam_meter,-0.024f},{AutoHomeParam_meter,-0.024f}});
+                                {{AutoHomeParam_meter,-chassis_lift_max_height},{AutoHomeParam_meter,-chassis_lift_max_height}});
     chassis_Lift.ConfigLimit({0,1},
-                             {{0.0f,0.33f},{0.0f,0.33f}});
+                             {{chassis_lift_limit_min,chassis_lift_limit_max},{chassis_lift_limit_min,chassis_lift_limit_min}});
 
     lift_Drive_motor1.init();
     lift_Drive_motor2.init();

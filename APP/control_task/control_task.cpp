@@ -96,43 +96,61 @@ void controlTask(void *argument) {
         }
 
         {
-            chassis_raw_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
-            chassis_raw_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
-            chassis_raw_cmd.omega_    = -JoyToVelocity(control_rm_cmd.joyRHori, kJoyDeadZoneRight, MAX_VELOCITY_ANGULAR);
+            if(control_rm_cmd.swD == RM_2_POS_SW_State_t::UP){
+                chassis_raw_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
+                chassis_raw_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
+                chassis_raw_cmd.omega_    = -JoyToVelocity(control_rm_cmd.joyRHori, kJoyDeadZoneRight, MAX_VELOCITY_ANGULAR);
 
-            float rm_angle_deg = atan2(chassis_raw_cmd.linear_y_, chassis_raw_cmd.linear_x_) / kDegToRad;
-            float v_aim = sqrt(chassis_raw_cmd.linear_x_ * chassis_raw_cmd.linear_x_ + chassis_raw_cmd.linear_y_ * chassis_raw_cmd.linear_y_);
-            chassis_pub_cmd.linear_x_ = v_aim * cos((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
-            chassis_pub_cmd.linear_y_ = v_aim * sin((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
-            chassis_pub_cmd.omega_ = chassis_raw_cmd.omega_;
+                float rm_angle_deg = atan2(chassis_raw_cmd.linear_y_, chassis_raw_cmd.linear_x_) / kDegToRad;
+                float v_aim = sqrt(chassis_raw_cmd.linear_x_ * chassis_raw_cmd.linear_x_ + chassis_raw_cmd.linear_y_ * chassis_raw_cmd.linear_y_);
+                chassis_pub_cmd.linear_x_ = v_aim * cos((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
+                chassis_pub_cmd.linear_y_ = v_aim * sin((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
+                chassis_pub_cmd.omega_ = chassis_raw_cmd.omega_;    
+            }else if(control_rm_cmd.swD == RM_2_POS_SW_State_t::DOWN){
+                chassis_pub_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
+                chassis_pub_cmd.linear_y_ = 0.0f;
+                chassis_pub_cmd.omega_ = 0.0f;    
+            }
         }
 
         {
             chassis_lift_pub_cmd.speed_x_ = chassis_pub_cmd.linear_x_;
-            if(control_rm_cmd.swC != control_rm_last_cmd.swC
-               && control_rm_last_cmd.swC == RM_3_POS_SW_State_t::MIDDLE){
-                if(control_rm_cmd.swC == RM_3_POS_SW_State_t::UP){
+            if(control_rm_cmd.swD == RM_2_POS_SW_State_t::UP){
+                chassis_lift_pub_cmd.height_front_ = chassis_lift_UP;
+                chassis_lift_pub_cmd.height_hind_ = chassis_lift_UP;                
+            }else if(control_rm_cmd.swD == RM_2_POS_SW_State_t::DOWN){
+                if(control_rm_last_cmd.swD == RM_2_POS_SW_State_t::UP){
                     chassis_lift_pub_cmd.height_front_ = chassis_lift_MIDDLE;
                     chassis_lift_pub_cmd.height_hind_ = chassis_lift_MIDDLE;
-                }else if(control_rm_cmd.swC == RM_3_POS_SW_State_t::DOWN){
-                    chassis_lift_pub_cmd.height_front_ = chassis_lift_DOWN;
-                    chassis_lift_pub_cmd.height_hind_ = chassis_lift_DOWN;
+                }else {
+                    if(control_rm_cmd.swC != control_rm_last_cmd.swC
+                    && control_rm_last_cmd.swC == RM_3_POS_SW_State_t::MIDDLE){
+                        if(control_rm_cmd.swC == RM_3_POS_SW_State_t::UP){
+                            chassis_lift_pub_cmd.height_front_ = chassis_lift_MIDDLE;
+                            chassis_lift_pub_cmd.height_hind_ = chassis_lift_MIDDLE;
+                        }else if(control_rm_cmd.swC == RM_3_POS_SW_State_t::DOWN){
+                            chassis_lift_pub_cmd.height_front_ = chassis_lift_DOWN;
+                            chassis_lift_pub_cmd.height_hind_ = chassis_lift_DOWN;
+                        }
+                    }else if(control_rm_cmd.swB != control_rm_last_cmd.swB 
+                            && control_rm_last_cmd.swB == RM_3_POS_SW_State_t::MIDDLE){
+                        if(control_rm_cmd.swB == RM_3_POS_SW_State_t::UP){
+                            if(chassis_lift_pub_cmd.height_front_ == chassis_lift_MIDDLE)chassis_lift_pub_cmd.height_front_ = chassis_lift_DOWN;
+                            else if(chassis_lift_pub_cmd.height_front_ == chassis_lift_DOWN)chassis_lift_pub_cmd.height_front_ = chassis_lift_MIDDLE;
+                        }else if(control_rm_cmd.swB == RM_3_POS_SW_State_t::DOWN){
+                            if(chassis_lift_pub_cmd.height_hind_ == chassis_lift_MIDDLE)chassis_lift_pub_cmd.height_hind_ = chassis_lift_DOWN;
+                            else if(chassis_lift_pub_cmd.height_hind_ == chassis_lift_DOWN)chassis_lift_pub_cmd.height_hind_ = chassis_lift_MIDDLE;
+                        }
+                    }    
                 }
-            }else if(control_rm_cmd.swB != control_rm_last_cmd.swB 
-                     && control_rm_last_cmd.swB == RM_3_POS_SW_State_t::MIDDLE){
-                if(control_rm_cmd.swB == RM_3_POS_SW_State_t::UP){
-                    if(chassis_lift_pub_cmd.height_front_ == chassis_lift_MIDDLE)chassis_lift_pub_cmd.height_front_ = chassis_lift_DOWN;
-                    else if(chassis_lift_pub_cmd.height_front_ == chassis_lift_DOWN)chassis_lift_pub_cmd.height_front_ = chassis_lift_MIDDLE;
-                }else if(control_rm_cmd.swB == RM_3_POS_SW_State_t::DOWN){
-                    if(chassis_lift_pub_cmd.height_hind_ == chassis_lift_MIDDLE)chassis_lift_pub_cmd.height_hind_ = chassis_lift_DOWN;
-                    else if(chassis_lift_pub_cmd.height_hind_ == chassis_lift_DOWN)chassis_lift_pub_cmd.height_hind_ = chassis_lift_MIDDLE;
-                }
+                
             }
+            
         }
 
         {   
             /////////////////debug begin///////////////////////
-            
+            // chassis_lift_controller3.MotorMitCtrl({M_PI,0.0f,0.0f,0.0f,1.0f});
             /////////////////debug end///////////////////////
         }
 

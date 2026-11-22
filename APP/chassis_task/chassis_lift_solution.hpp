@@ -30,9 +30,8 @@ class ChassisLift {
 public:
     struct Geometry {
         float wheel_diameter_m; // 轮径
-        float zero_height_m;    // 零点离地高度
-        Geometry(float wheel_diameter = 0.04f, float zero_height = 0.024f)
-            : wheel_diameter_m(wheel_diameter), zero_height_m(zero_height){}
+        Geometry(float wheel_diameter = 0.04f)
+            : wheel_diameter_m(wheel_diameter){}
     };
 
     ChassisLift( GeneralAxis<2,4> &Lift_legs , 

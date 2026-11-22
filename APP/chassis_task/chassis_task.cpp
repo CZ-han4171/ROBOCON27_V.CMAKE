@@ -29,10 +29,10 @@
 osThreadId_t ChassisTaskHandle;
 
 // 底盘控制命令订阅
-static TypedTopicSubscriber<pub_chassis_cmd> chassis_cmd_sub("chassis_sub_cmd", 8);
+static TypedTopicSubscriber<pub_chassis_cmd> chassis_cmd_sub("chassis_cmd", 8);
 pub_chassis_cmd chassis_sub_cmd{};
 
-static TypedTopicSubscriber<pub_chassis_lift_cmd> chassis_lift_cmd_sub("chassis_lift_sub_cmd", 8);
+static TypedTopicSubscriber<pub_chassis_lift_cmd> chassis_lift_cmd_sub("chassis_lift_cmd", 8);
 pub_chassis_lift_cmd chassis_lift_sub_cmd{};
 
 OmniChassis OmniChassis_solve{Omni_Chassis};
