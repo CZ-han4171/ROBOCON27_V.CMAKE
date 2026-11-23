@@ -34,11 +34,19 @@ template <std::size_t ControlCount,std::size_t MotorCount> // 控制对象个数
 class AxisBase{
 public:
     using ControlFloatArray = std::array<float, ControlCount>;
-    using MotorFloatArray   = std::array<float, MotorCount>;
+    using ControlMitParamArray = std::array<MitParam, ControlCount>;
+    using MotorFloatArray = std::array<float, MotorCount>;
+    using MotorMitParamArray = std::array<MitParam, MotorCount>;
 
     AxisBase() = default;
 
-    enum ControlOutputMode : size_t {
+    enum ControlMode : size_t {
+        PosCtrl,
+        SpeedCtrl,
+        MitCtrl
+    };
+
+    enum PosOutputMode : size_t {
         SPEEDPLAN,
         INTERPOLATION
     };
@@ -129,18 +137,15 @@ public:
         std::size_t motor_count = 0;
         for(std::size_t i = 0 ; i < ControlCount ; ++i){
             float estimated_torque = 0.0f;
-            float torque = 0.0f;
             for(std::size_t j = 0 ; j < ComtrollerMotorCounts_[i] ; ++j){
                 MitParam mit_motor_in = MotorControllers_[motor_count]->getMitParam_In();
-                torque += MotorControllers_[motor_count]->getMotorTorque()*
-                          motor_rad_per_output_[motor_count];
                 estimated_torque += (mit_motor_in.torque + 
                                     mit_motor_in.Kp*(mit_motor_in.pos - MotorControllers_[motor_count]->getMotorSumPos_rad()) + 
                                     mit_motor_in.Kd*mit_motor_in.speed)*
                                     motor_rad_per_output_[motor_count];
                 motor_count++;
             }
-            if(fabsf(Axis_actual_speed_[i]) < 0.1f && fabsf(torque) > fabsf(estimated_torque)*0.8f){
+            if(fabsf(Axis_actual_speed_[i]) < 0.1f && fabsf(Axis_actual_torque_[i]) > fabsf(estimated_torque)*0.8f){
                 stall_params_[i].Unstall_time = 0.0f;
                 stall_params_[i].Stall_time += dt;
                 if(stall_params_[i].Stall_time >= stall_timeout_s_){
@@ -209,35 +214,50 @@ public:
         optimizer_.init(improvement,planparam,pidparam);
     };
 
-    virtual void UpdateAxisData();
+    virtual void UpdateAxisData() = 0;
 
-    virtual void setAxisPos(ControlFloatArray Axis_pos,std::optional<float> T = std::nullopt);
-    virtual void setAxisSpeed(ControlFloatArray Axis_speed);
+    virtual void setAxisPos(ControlFloatArray Axis_pos,std::optional<float> T = std::nullopt){
+        UpdateAxisData();
+        AxisStall_update();
+        if(AutoHome_solve())return ;
+
+        std::size_t optimizer_in_count = 0;
+
+        Special_solve(Axis_pos);
+
+        for(std::size_t i = 0 ; i < ControlCount ; ++i){
+            Axis_traget_pos_[i] = Axis_pos[i];
+            for(std::size_t j = 0 ; j < ComtrollerMotorCounts_[i] ; ++j){
+                Axis_traget_pos_optimizer_in_[optimizer_in_count] = Axis_traget_pos_[i];
+                optimizer_in_count++;
+            }
+        }
+        optimizer_.Run(Axis_traget_pos_optimizer_in_,Axis_actual_pos_optimizer_in_,T);
+        dispatchCommand(ControlMode::PosCtrl);
+    }
+    virtual void setAxisSpeed(ControlFloatArray Axis_speed){
+        UpdateAxisData();
+        AxisStall_update();
+        if(AutoHome_solve())return ;
+
+        Axis_traget_speed_ = Axis_speed;
+        dispatchCommand(ControlMode::SpeedCtrl);
+    }
+    virtual void setAxisMit(ControlMitParamArray Axis_mit){
+        UpdateAxisData();
+        AxisStall_update();
+        if(AutoHome_solve())return;
+
+        // std::array<float ,
+        // for(std::size_t i = 0 ; i < ControlCount ; ++i)
+        // Special_solve(Axis_mit.);
+        Axis_traget_mit_ = Axis_mit;
+        dispatchCommand(ControlMode::MitCtrl);
+    }
     virtual ControlFloatArray getAxisPos(){ return Axis_actual_pos_; };
     virtual ControlFloatArray getAxisSpeed(){ return Axis_actual_speed_; };
 
-    virtual void dispatchCommand(){
-        switch (controlmode_) {
-            case SPEEDPLAN:{
-                MotorFloatArray optimizer_speed_output = optimizer_.GetSpeedOutput();
-                for (size_t i = 0; i < MotorCount; ++i) {
-                    float Motor_speed_rad = optimizer_speed_output[i]*motor_rad_per_output_[i];
-                    MotorControllers_[i]->MotorSpeedCtrl_rad_s(Motor_speed_rad);
-                }
-                break;
-            }
-            case INTERPOLATION:{
-                MotorFloatArray optimizer_pos_ref = optimizer_.GetPosRef();
-                for (size_t i = 0; i < MotorCount; ++i) {
-                    float Motor_sum_pos = optimizer_pos_ref[i]*motor_rad_per_output_[i];
-                    MotorControllers_[i]->MotorSumPosCtrl_rad(Motor_sum_pos);
-                }
-                break;
-            }
-            default :
-                break;
-        }
-    };
+    virtual void dispatchCommand(ControlMode ctrl_mode){};
 
     MotorFloatArray getMotorPerOutput(){ return motor_rad_per_output_; }
     
@@ -247,11 +267,15 @@ public:
 
     ControlFloatArray Axis_traget_pos_{0};
     ControlFloatArray Axis_actual_pos_{0};
+    ControlFloatArray Axis_traget_speed_{0};
     ControlFloatArray Axis_actual_speed_{0};
+    ControlMitParamArray Axis_traget_mit_{0};
+    ControlFloatArray Axis_actual_torque_{0};
 
     MotorFloatArray Axis_traget_pos_optimizer_in_{0};
     MotorFloatArray Axis_actual_pos_optimizer_in_{0};
     MotorFloatArray Axis_actual_speed_optimizer_in_{0};
+    MotorFloatArray Axis_actual_torque_optimizer_in_{0};
 
     std::array<TravelLimit, ControlCount> travel_limit_{0};
     std::array<bool,ControlCount> is_limit_{false};
@@ -262,7 +286,7 @@ public:
     bool AutoHome_complete = true;
 
     ControlOptimizer<MotorCount> optimizer_;
-    ControlOutputMode controlmode_ = SPEEDPLAN;
+    PosOutputMode controlmode_ = SPEEDPLAN;
 
     float dt{0};
     uint32_t DWT_CNT{0};
@@ -276,11 +300,12 @@ class GeneralAxis : public AxisBase<ControlCount,MotorCount>{
 
 public:
     using ControlFloatArray = typename Base::ControlFloatArray;
+    using ControlMitParamArray = typename Base::ControlMitParamArray;
     using MotorFloatArray   = typename Base::MotorFloatArray;
+    using ControlMode = typename  Base::ControlMode;
+    using PosOutputMode = typename  Base::PosOutputMode;
     using TravelLimit       = typename Base::TravelLimit;
     using PositionControlOptions = typename Base::PositionControlOptions;
-
-    // using Base::init;
 
     explicit GeneralAxis(std::array<std::initializer_list<MotorControllerBase*>, ControlCount> MotorControllers, 
                         std::array<float, MotorCount> motor_rad_per_output){
@@ -294,15 +319,6 @@ public:
         }
     }
 
-    // void init(Control_Improvement improvement,
-    //                   PlanParam planparam,
-    //                   PidParam pidparam,
-    //                   std::initializer_list<std::size_t> ControlObject,
-    //                   std::initializer_list<PositionControlOptions> position_options){
-    //     this->optimizer_.init(improvement,planparam,pidparam);
-    //     this->ConfigOptions(ControlObject,position_options);
-    // };
-
     void UpdateAxisData() override {
         this->dt = DWT_GetDeltaT(&this->DWT_CNT);
         this->dt = this->dt > 0.005f ? 0.005f : this->dt;
@@ -310,54 +326,83 @@ public:
         for(std::size_t i = 0 ; i < ControlCount ; ++i){
             float sum_pos = 0.0f;
             float sum_speed = 0.0f;
+            float sum_torque = 0.0f;
             for(std::size_t j = 0 ; j < this->ComtrollerMotorCounts_[i] ; ++j){
                 this->Axis_actual_pos_optimizer_in_[motor_count] = this->MotorControllers_[motor_count]->getMotorSumPos_rad()/this->motor_rad_per_output_[motor_count];
                 this->Axis_actual_speed_optimizer_in_[motor_count] = this->MotorControllers_[motor_count]->getMotorSpeed_rad()/this->motor_rad_per_output_[motor_count];
+                this->Axis_actual_torque_optimizer_in_[motor_count] = this->MotorControllers_[motor_count]->getMotorTorque()*this->motor_rad_per_output_[motor_count];
                 sum_pos += this->Axis_actual_pos_optimizer_in_[motor_count];
                 sum_speed += this->Axis_actual_speed_optimizer_in_[motor_count];
+                sum_torque += this->Axis_actual_torque_optimizer_in_[motor_count];
                 motor_count++;
             }
             this->Axis_actual_pos_[i] = sum_pos/this->ComtrollerMotorCounts_[i];
             this->Axis_actual_speed_[i] = sum_speed/this->ComtrollerMotorCounts_[i];
+            this->Axis_actual_torque_[i] = sum_torque;
         }
     }
 
-    void setAxisPos(ControlFloatArray Axis_pos,std::optional<float> T = std::nullopt) override {
-        UpdateAxisData();
-        this->AxisStall_update();
-        if(this->AutoHome_solve())return ;
-
-        std::size_t optimizer_in_count = 0;
-
-        this->Special_solve(Axis_pos);
-
-        for(std::size_t i = 0 ; i < ControlCount ; ++i){
-            this->Axis_traget_pos_[i] = Axis_pos[i];
-            for(std::size_t j = 0 ; j < this->ComtrollerMotorCounts_[i] ; ++j){
-                this->Axis_traget_pos_optimizer_in_[optimizer_in_count] = this->Axis_traget_pos_[i];
-                optimizer_in_count++;
+    void dispatchCommand(ControlMode ctrl_mode) override {
+        switch (ctrl_mode) {
+            case ControlMode::PosCtrl:{
+                switch (this->controlmode_) {
+                    case PosOutputMode::SPEEDPLAN:{
+                        MotorFloatArray optimizer_speed_output = this->optimizer_.GetSpeedOutput();
+                        for (size_t i = 0; i < MotorCount; ++i) {
+                            float Motor_speed_rad = optimizer_speed_output[i]*this->motor_rad_per_output_[i];
+                            this->MotorControllers_[i]->MotorSpeedCtrl_rad_s(Motor_speed_rad);
+                        }
+                        break;
+                    }
+                    case PosOutputMode::INTERPOLATION:{
+                        MotorFloatArray optimizer_pos_ref = this->optimizer_.GetPosRef();
+                        for (size_t i = 0; i < MotorCount; ++i) {
+                            float Motor_sum_pos = optimizer_pos_ref[i]*this->motor_rad_per_output_[i];
+                            this->MotorControllers_[i]->MotorSumPosCtrl_rad(Motor_sum_pos);
+                        }
+                        break;
+                    }
+                    default :
+                        break;
+                }
+                break;
             }
+            case ControlMode::SpeedCtrl:{
+                std::array<float, MotorCount> speed_in;
+                std::size_t speed_in_count = 0;
+                for(std::size_t i = 0 ; i < ControlCount ; ++i){
+                    for(std::size_t j = 0 ; j < this->ComtrollerMotorCounts_[i] ; ++j){
+                        float Motor_speed = this->Axis_traget_speed_[i]*this->motor_rad_per_output_[speed_in_count];
+                        speed_in[speed_in_count] = Motor_speed;
+                        this->MotorControllers_[speed_in_count]->MotorSpeedCtrl_rad_s(Motor_speed);
+                        speed_in_count++;
+                    }
+                }
+                break;
+            }
+            case ControlMode::MitCtrl:{
+                std::size_t motor_count = 0;
+                for(std::size_t i = 0 ; i < ControlCount ; ++i ){
+                    for(std::size_t j = 0 ; j < this->ComtrollerMotorCounts_[i] ; ++j){
+                        std::size_t N = this->ComtrollerMotorCounts_[i];
+                        float r = this->motor_rad_per_output_[motor_count];
+                        MitParam mit_motor_in;
+                        mit_motor_in.torque = this->Axis_traget_mit_[i].torque/( N * r );
+                        mit_motor_in.Kd     = this->Axis_traget_mit_[i].Kd/( N * r * r );
+                        mit_motor_in.Kp     = this->Axis_traget_mit_[i].Kp/( N * r * r );
+                        mit_motor_in.pos    = this->Axis_traget_mit_[i].pos * r ;
+                        mit_motor_in.speed  = this->Axis_traget_mit_[i].speed * r ;
+                        this->MotorControllers_[motor_count]->MotorMitCtrl(mit_motor_in);
+                        motor_count++;
+                    }
+                }
+                break;
+            }
+            default: 
+                break;
         }
-        this->optimizer_.Run(this->Axis_traget_pos_optimizer_in_,this->Axis_actual_pos_optimizer_in_,T);
-        this->dispatchCommand();
-    }
-
-    void setAxisSpeed(ControlFloatArray Axis_speed) override {
-        UpdateAxisData();
-        this->AxisStall_update();
-        if(this->AutoHome_solve())return ;
         
-        std::array<float, MotorCount> speed_in;
-        std::size_t speed_in_count = 0;
-        for(std::size_t i = 0 ; i < ControlCount ; ++i){
-            for(std::size_t j = 0 ; j < this->ComtrollerMotorCounts_[i] ; ++j){
-                float Motor_speed = Axis_speed[i]*this->motor_rad_per_output_[speed_in_count];
-                speed_in[speed_in_count] = Motor_speed;
-                this->MotorControllers_[speed_in_count]->MotorSpeedCtrl_rad_s(Motor_speed);
-                speed_in_count++;
-            }
-        }
-    }
+    };
 
 private:
 
