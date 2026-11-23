@@ -34,6 +34,14 @@ public:
             : wheel_diameter_m(wheel_diameter){}
     };
 
+    enum LiftState : size_t{
+        UP,
+        MIDDLE,
+        DOWN
+    }
+
+    
+
     ChassisLift( GeneralAxis<2,4> &Lift_legs , 
                  GeneralAxis<1,2> &Lift_Drive,
                  const Geometry &geometry = Geometry())
@@ -49,6 +57,8 @@ public:
 
         Lift_Legs_.setAxisPos({height_front_leg_m,height_hind_leg_m});
         Lift_Drive_.setAxisSpeed({speed_drive_m_s});
+        // Lift_Legs_.setAxisSpeed({0.0f,0.0f});
+        // Lift_Drive_.setAxisSpeed({0.0f});
     }
 
 private:

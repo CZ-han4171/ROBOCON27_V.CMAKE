@@ -75,7 +75,7 @@ void RobotDevices_Init() {
                     {0.5f,0.6f,1.0f},
                     M3508_P19_PosPid);
     chassis_Lift.ConfigAutoHome({0,1},
-                                {{AutoHomeParam_meter,-chassis_lift_max_height},{AutoHomeParam_meter,-chassis_lift_max_height}});
+                                {{AutoHomeParam_meter,-chassis_lift_max_front_height},{AutoHomeParam_meter,-chassis_lift_max_hind_height}});
     chassis_Lift.ConfigLimit({0,1},
                              {{chassis_lift_limit_min,chassis_lift_limit_max},{chassis_lift_limit_min,chassis_lift_limit_min}});
 

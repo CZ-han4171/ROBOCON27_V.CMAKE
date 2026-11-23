@@ -13,9 +13,10 @@
  */
 #include "main.h"
 
-#define chassis_lift_max_height 0.024f
+#define chassis_lift_max_front_height 0.0195f
+#define chassis_lift_max_hind_height 0.0063f
 #define chassis_lift_MIDDLE 0.0f
 #define chassis_lift_DOWN 0.2f
-#define chassis_lift_UP 0.02f
+#define chassis_lift_UP -0.005f
 #define chassis_lift_limit_min -0.02f
 #define chassis_lift_limit_max 0.2f

@@ -107,14 +107,14 @@ void controlTask(void *argument) {
                 chassis_pub_cmd.linear_y_ = v_aim * sin((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
                 chassis_pub_cmd.omega_ = chassis_raw_cmd.omega_;    
             }else if(control_rm_cmd.swD == RM_2_POS_SW_State_t::DOWN){
-                chassis_pub_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
-                chassis_pub_cmd.linear_y_ = 0.0f;
+                chassis_pub_cmd.linear_x_ = 0.0f;
+                chassis_pub_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
                 chassis_pub_cmd.omega_ = 0.0f;    
             }
         }
 
         {
-            chassis_lift_pub_cmd.speed_x_ = chassis_pub_cmd.linear_x_;
+            chassis_lift_pub_cmd.speed_x_ = chassis_pub_cmd.linear_y_;
             if(control_rm_cmd.swD == RM_2_POS_SW_State_t::UP){
                 chassis_lift_pub_cmd.height_front_ = chassis_lift_UP;
                 chassis_lift_pub_cmd.height_hind_ = chassis_lift_UP;                
