@@ -28,11 +28,11 @@
 #include <math.h>
 #include <sys/types.h>
 
-PidParam M2006_P38_SpeedPid(3000.0f, 16600.0f, 0.0f, 10000.0f, 0.0f, IMCREATEMENT_OF_OUT);
+PidParam M2006_P38_SpeedPid(3000.0f, 8000.0f, 0.0f, 10000.0f, 0.0f, IMCREATEMENT_OF_OUT);
 PidParam M2006_P38_PosPid(3.0f,0.4f,0.01f,5*M_PI,0.5f*kDegToRad,NONE);
 PlanParam M2006_P38_PlanParam(M_PI,M_PI,10*M_PI);
 
-PidParam M3508_P19_SpeedPid(4000.0f, 8600.0f, 0.0f, 16000.0f, 0.0f, IMCREATEMENT_OF_OUT);
+PidParam M3508_P19_SpeedPid(3300.0f, 5600.0f, 0.0f, 16000.0f, 0.0f, IMCREATEMENT_OF_OUT);
 PidParam M3508_P19_PosPid(3.0f,0.4f,0.01f,2*M_PI,0.5f*kDegToRad,NONE);
 PlanParam M3508_P19_PlanParam(4.0f*M_PI,4.0f*M_PI,10*M_PI);
 
@@ -71,7 +71,7 @@ void RobotDevices_Init() {
     chassis_lift_controller2.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
     chassis_lift_controller3.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
     chassis_lift_controller4.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
-    chassis_Lift.init(Control_Improvement::SPEEDPLAN,
+    chassis_Lift.init(Control_Improvement::POLYNOMIAL,
                     {0.5f,0.6f,1.0f},
                     M3508_P19_PosPid);
     chassis_Lift.ConfigAutoHome({0,1},

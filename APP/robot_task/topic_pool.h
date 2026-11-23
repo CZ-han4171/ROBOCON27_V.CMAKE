@@ -98,6 +98,13 @@ typedef struct {
   float height_hind_{0};
 } pub_chassis_lift_cmd;
 
+// typedef struct {
+//   float speed_x_{0};
+//   ChassisLift::LiftState front_leg_ = LiftState::UP;
+//   ChassisLift::LiftState hind_leg_ = LiftState::UP;
+// } pub_chassis_lift_cmd;
+
+
 //Position模块数据结构体
 typedef struct {
   uint8_t frame_id;

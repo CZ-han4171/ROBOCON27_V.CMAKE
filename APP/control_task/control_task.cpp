@@ -12,6 +12,7 @@
  */
 
 #include "bsp_dwt.h"
+#include "chassis_lift_solution.hpp"
 #include "chassis_solution.hpp"
 #include "main.h"
 #include "control_task.h"
@@ -45,6 +46,8 @@ pub_chassis_cmd chassis_raw_cmd{};
 TypedTopicPublisher<pub_chassis_lift_cmd> chassis_lift_data_pub("chassis_lift_cmd");
 pub_chassis_lift_cmd chassis_lift_pub_cmd{};
 pub_chassis_lift_cmd chassis_lift_raw_cmd{};
+
+extern ChassisLift ChassisLift_solve;
 
 TypedTopicSubscriber<pub_RM_Data> control_rm_sub("rm", 8);
 pub_RM_Data control_rm_cmd{};
@@ -116,8 +119,8 @@ void controlTask(void *argument) {
         {
             chassis_lift_pub_cmd.speed_x_ = chassis_pub_cmd.linear_y_;
             if(control_rm_cmd.swD == RM_2_POS_SW_State_t::UP){
-                chassis_lift_pub_cmd.height_front_ = chassis_lift_UP;
-                chassis_lift_pub_cmd.height_hind_ = chassis_lift_UP;                
+                chassis_lift_pub_cmd.height_front_ = chassis_lift_front_UP;
+                chassis_lift_pub_cmd.height_hind_ = chassis_lift_hind_UP;                
             }else if(control_rm_cmd.swD == RM_2_POS_SW_State_t::DOWN){
                 if(control_rm_last_cmd.swD == RM_2_POS_SW_State_t::UP){
                     chassis_lift_pub_cmd.height_front_ = chassis_lift_MIDDLE;
@@ -143,7 +146,6 @@ void controlTask(void *argument) {
                         }
                     }    
                 }
-                
             }
             
         }
