@@ -273,7 +273,7 @@ private:
         s_ref = ( s_ref > 1.0f ) ? 1.0f : s_ref ;
         traj_param.ref = traj_param.start + traj_param.delat_traj()*( 1 - cosf(M_PI*s_ref))/2.0f;
 
-        if(traj_param.T > 0.001f)output_ff = traj_param.delat_traj()*M_PI*sinf(M_PI*s_now)/(2.0f*traj_param.T);
+        if(traj_param.T > 0.001f)output_ff = traj_param.delat_traj()*M_PI*sinf(M_PI*s_ref)/(2.0f*traj_param.T);
         else output_ff = 0.0f;
         output_pid = PID_Calculate(&track_path_pid_,traj_param.now,traj_param.ref);
 
@@ -288,7 +288,7 @@ private:
         s_ref = ( s_ref > 1.0f ) ? 1.0f : s_ref ;
         traj_param.ref = traj_param.start + traj_param.delat_traj()*( 10.0f*s_ref*s_ref*s_ref - 15.0f*s_ref*s_ref*s_ref*s_ref + 6.0f*s_ref*s_ref*s_ref*s_ref*s_ref );
 
-        if(traj_param.T > 0.001f)output_ff = traj_param.delat_traj()*( 30.0f*s_now*s_now - 60.0f*s_now*s_now*s_now + 30.0f*s_now*s_now*s_now*s_now )/traj_param.T;
+        if(traj_param.T > 0.001f)output_ff = traj_param.delat_traj()*( 30.0f*s_ref*s_ref - 60.0f*s_ref*s_ref*s_ref + 30.0f*s_ref*s_ref*s_ref*s_ref )/traj_param.T;
         else output_ff = 0.0f;
         output_pid = PID_Calculate(&track_path_pid_,traj_param.now,traj_param.ref);
 
