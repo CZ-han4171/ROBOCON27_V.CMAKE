@@ -256,10 +256,13 @@ public:
     }
     virtual ControlFloatArray getAxisPos(){ return Axis_actual_pos_; };
     virtual ControlFloatArray getAxisSpeed(){ return Axis_actual_speed_; };
+    virtual ControlFloatArray getAxisTorque(){ return Axis_actual_torque_; };
 
     virtual void dispatchCommand(ControlMode ctrl_mode){};
 
     MotorFloatArray getMotorPerOutput(){ return motor_rad_per_output_; }
+
+    bool getAxisfinish(){ return optimizer_.Getfinish(); }
     
     std::array<MotorControllerBase*, MotorCount> MotorControllers_;
     MotorFloatArray motor_rad_per_output_;
