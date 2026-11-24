@@ -50,6 +50,14 @@ public:
         RUNNING
     };
 
+    enum LiftState : size_t{
+        Collapse,
+        Crouh,
+        HoldUp,
+        FrontHold,
+        HindHold
+    };
+
     ChassisLift( GeneralAxis<2,4> &Lift_legs , 
                  GeneralAxis<1,2> &Lift_Drive,
                  const Geometry &geometry = Geometry())
@@ -102,7 +110,7 @@ public:
         front_leg_traget_height_m = cmd.height_front_;
         hind_leg_traget_height_m = cmd.height_hind_;
         drive_traget_speed_m_s = 2.0f*cmd.speed_x_/geometry_.wheel_diameter_m;
-        Lift_Legs_.setAxisPos({front_leg_traget_height_m,hind_leg_traget_height_m},0.4f);
+        Lift_Legs_.setAxisPos({front_leg_traget_height_m,hind_leg_traget_height_m},1.0f);
         Lift_Drive_.setAxisSpeed({drive_traget_speed_m_s});
         front_leg_actual_height_m = Lift_Legs_.getAxisPos()[0];
         hind_leg_actual_height_m = Lift_Legs_.getAxisPos()[1];

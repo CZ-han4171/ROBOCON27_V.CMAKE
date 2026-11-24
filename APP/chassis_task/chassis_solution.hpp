@@ -26,6 +26,15 @@
 #include <cstdint>
 #include <math.h>
 
+struct Chassis_data{
+    float x;
+    float y;
+    float yaw;
+    float vx;
+    float vy;
+    float w;
+};
+
 class OmniChassis {
 public:
     enum WheelIndex : size_t {

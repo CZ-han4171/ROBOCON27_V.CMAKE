@@ -32,7 +32,7 @@ PidParam M2006_P38_SpeedPid(3000.0f, 8000.0f, 0.0f, 10000.0f, 0.0f, IMCREATEMENT
 PidParam M2006_P38_PosPid(3.0f,0.4f,0.01f,5*M_PI,0.5f*kDegToRad,NONE);
 PlanParam M2006_P38_PlanParam(M_PI,M_PI,10*M_PI);
 
-PidParam M3508_P19_SpeedPid(3300.0f, 5600.0f, 0.0f, 16000.0f, 0.0f, IMCREATEMENT_OF_OUT);
+PidParam M3508_P19_SpeedPid(2300.0f, 5600.0f, 0.0f, 16000.0f, 0.1f, IMCREATEMENT_OF_OUT);
 PidParam M3508_P19_PosPid(3.0f,0.4f,0.01f,2*M_PI,0.5f*kDegToRad,NONE);
 PlanParam M3508_P19_PlanParam(4.0f*M_PI,4.0f*M_PI,10*M_PI);
 
