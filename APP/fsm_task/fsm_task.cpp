@@ -48,7 +48,7 @@ struct FsmContext {
 //    PeerRoot：根下面的几个并列分支
 //    Composite：子状态机，同一时刻只有一个孩子活着
 
-using M = hfsm2::MachineT<hfsm2::Config::ContextT<FsmContext>>;
+using M = hfsm2::MachineT<hfsm2::Config::ContextT<FsmContext&>>;
 
 struct Disabled;
 struct Idle;
@@ -163,7 +163,7 @@ void fsmTask(void *argument) {
                 case RM_2_POS_SW_State_t::DOWN:   g_context.stage = 1; break;
             }
         }
-
+                     
         const bool alive_now = (now - rcUpdateTime) <= kRcTimeout;
         if (g_context.rc_alive && !alive_now) {
             g_fsm.react(RcLostEvent{});  
@@ -173,6 +173,7 @@ void fsmTask(void *argument) {
         
         g_fsm.update();
 
+        fsm_chassis_cmd.Publish(g_context.cmd);  
 
         fsm_watch[0] = g_fsm.isActive<Disabled>() ? 1.0f : 0.0f;
         fsm_watch[1] = g_fsm.isActive<Idle>()     ? 1.0f : 0.0f;
