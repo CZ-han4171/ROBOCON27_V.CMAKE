@@ -110,6 +110,10 @@ public:
         AutoHome_complete = false;
     }
 
+    void ConfigFinishParam( float pos_tolerance, float speed_tolerance){
+        optimizer_.ConfigFinishParam(pos_tolerance,speed_tolerance);
+    }
+
     void Limit_solve(ControlFloatArray &Axis_pos_in){
         for(std::size_t i = 0 ; i < ControlCount ; ++i){
             if(is_limit_[i])Axis_pos_in[i] = std::clamp(Axis_pos_in[i], travel_limit_[i].min, travel_limit_[i].max);

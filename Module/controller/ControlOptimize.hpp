@@ -83,6 +83,10 @@ public:
             applyPidParam(track_lateral_pid_[i],param);
         }
     }
+    void ConfigFinishParam( float pos_tolerance = 0.05f, float speed_tolerance = 0.05f){
+        finish_tolerance_pos_ = pos_tolerance;
+        finish_tolerance_speed_ = speed_tolerance;
+    }
     void applyPidParam(PID_t& pid, PidParam param) {
         pid = {};
         pid.Kp = param.kp;
@@ -196,7 +200,7 @@ public:
             const float speed = pos_output_components_[i];
 
             if (!std::isfinite(error) || !std::isfinite(speed) ||
-                fabsf(error) >= 0.01f || fabsf(speed) >= 0.01f) {
+                fabsf(error) >= finish_tolerance_pos_ || fabsf(speed) >= finish_tolerance_speed_) {
                 is_finish = false;
                 break;
             }
@@ -300,6 +304,9 @@ private:
     float output_path_ff_{0};
 
     bool is_finish = false;
+    float finish_tolerance_pos_{0.05f};
+    float finish_tolerance_speed_{0.05f};
+
     bool is_init = false;
     bool is_point_hold_ = false;
     float dt{0};
