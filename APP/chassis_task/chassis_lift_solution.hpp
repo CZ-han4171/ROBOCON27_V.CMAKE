@@ -72,6 +72,8 @@ public:
         hind_leg_actual_height_m = Lift_Legs_.getAxisPos()[1];
         if(Lift_Legs_.getAxisfinish()){
             lift_actual_state_ = lift_traget_state_;
+        }else if(lift_actual_state_ != lift_traget_state_){
+            lift_actual_state_ = LiftState::Running;
         }
     }
 

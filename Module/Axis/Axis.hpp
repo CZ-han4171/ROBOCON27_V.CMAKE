@@ -145,7 +145,7 @@ public:
                                     motor_rad_per_output_[motor_count];
                 motor_count++;
             }
-            if(fabsf(Axis_actual_speed_[i]) < 0.1f && fabsf(Axis_actual_torque_[i]) > fabsf(estimated_torque)*0.8f){
+            if(fabsf(Axis_actual_speed_[i]) < 0.001f && fabsf(Axis_actual_torque_[i]) > fabsf(estimated_torque)*0.8f){
                 stall_params_[i].Unstall_time = 0.0f;
                 stall_params_[i].Stall_time += dt;
                 if(stall_params_[i].Stall_time >= stall_timeout_s_){

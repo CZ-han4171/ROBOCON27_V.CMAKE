@@ -106,7 +106,8 @@ enum LiftState : size_t{
     Crouh = 1,
     HoldUp = 2,
     FrontHold = 3,
-    HindHold = 4
+    HindHold = 4,
+    Running = 5
 };
 
 typedef struct {

@@ -67,8 +67,12 @@ bool imu_init = false;
 PidParam track_omega{5.30f,0.3f,0.55f,MAX_VELOCITY_ANGULAR*0.75,0.5f*kDegToRad,Integral_Limit};
 Chassis_data chassis_data;
 LiftState state_tmp;
+uint8_t F9_count = 0;
+uint8_t D15_count = 0;
 bool GPIOF9 = 0;
+bool is_F9 = 0;
 bool GPIOD15 = 0;
+bool is_D15 = 0;
 float_t debug_dt;
 uint32_t debug_DWT_CNT;
 float watch[10];
@@ -125,7 +129,28 @@ void controlTask(void *argument) {
 
         {
             GPIOF9 = HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_9) == GPIO_PIN_SET;
-            GPIOD15 = HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_15) == GPIO_PIN_SET;     
+            GPIOD15 = HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_15) == GPIO_PIN_SET;
+            
+            if(!GPIOF9){
+                F9_count++;
+                if(F9_count >= 5){
+                    is_F9 = false;
+                    F9_count = 0;
+                }
+            }else{
+                is_F9 = true;
+                F9_count = 0;
+            }
+            if(!GPIOD15){
+                D15_count++;
+                if(D15_count >= 5){
+                    is_D15 = false;
+                    D15_count = 0;
+                }
+            }else{
+                is_D15 = true;
+                D15_count = 0;
+            }
         }
 
         {
@@ -172,14 +197,14 @@ void controlTask(void *argument) {
                         }
                     }
                 }else if(state_tmp == LiftState::HoldUp){
-                    if(!GPIOF9){
+                    if(!is_F9){
                         chassis_lift_pub_cmd.state_ = LiftState::HindHold;
-                        chassis_lift_pub_cmd.T = 0.35f;
+                        chassis_lift_pub_cmd.T = 0.3f;
                     }
                 }else if(state_tmp == LiftState::HindHold){
-                    if(!GPIOD15){
+                    if(!is_D15){
                         chassis_lift_pub_cmd.state_ = LiftState::Crouh;
-                        chassis_lift_pub_cmd.T = 0.35f;
+                        chassis_lift_pub_cmd.T = 0.3f;
                     }
                 }
             }
