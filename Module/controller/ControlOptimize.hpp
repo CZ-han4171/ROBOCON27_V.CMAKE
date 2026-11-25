@@ -196,7 +196,7 @@ public:
             const float speed = pos_output_components_[i];
 
             if (!std::isfinite(error) || !std::isfinite(speed) ||
-                fabsf(error) >= 0.01f || fabsf(speed) >= 0.01f) {
+                fabsf(error) >= 0.05f || fabsf(speed) >= 0.05f) {
                 is_finish = false;
                 break;
             }

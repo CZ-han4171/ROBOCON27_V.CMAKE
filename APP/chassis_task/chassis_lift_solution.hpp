@@ -43,21 +43,6 @@ public:
         MitCtrl
     };
 
-    enum LiftLegState : size_t{
-        UP,
-        MIDDLE,
-        DOWN,
-        RUNNING
-    };
-
-    enum LiftState : size_t{
-        Collapse,
-        Crouh,
-        HoldUp,
-        FrontHold,
-        HindHold
-    };
-
     ChassisLift( GeneralAxis<2,4> &Lift_legs , 
                  GeneralAxis<1,2> &Lift_Drive,
                  const Geometry &geometry = Geometry())
@@ -66,109 +51,33 @@ public:
                  geometry_{geometry}{
     }
 
-    void set_Lift_perparing(bool is_preparing){
-        if(is_preparing){
-            if(!is_lift_preparing_){
-                front_leg_traget_state_ = MIDDLE;
-                hind_leg_traget_state_ = MIDDLE;
-            }
-        }else{
-            if(is_lift_preparing_){
-                front_leg_traget_state_ = UP;
-                hind_leg_traget_state_ = UP;
-            }
-        }
-        is_lift_preparing_ = is_preparing;
-    }
-
-    void Lift_front_leg_ctrl(LiftLegState pos){
-        // if(front_leg_traget_state_ == UP || front_leg_actual_state_ == UP)return;
-        if(!is_lift_preparing_)return;
-        front_leg_traget_state_ = pos;
-        Lift_Legs_.optimizer_.ConfigImprovement(Control_Improvement::SPEEDPLAN);
-        LiftControlMode_ = ControlMode::PosCtrl;
-    }
-
-    void Lift_hind_leg_ctrl(LiftLegState pos){
-        if(!is_lift_preparing_)return;
-        hind_leg_traget_state_ = pos;
-        Lift_Legs_.optimizer_.ConfigImprovement(Control_Improvement::SPEEDPLAN);
-        LiftControlMode_ = ControlMode::PosCtrl;
-    }
-
-    void Lift_ctrl(LiftLegState pos){
-        if(!is_lift_preparing_)return;
-        if(front_leg_traget_state_ != hind_leg_traget_state_)return;
-        // if(front_leg_traget_state_ == UP && pos == DOWN)pos = MIDDLE;
-        // if(front_leg_traget_state_ == DOWN && pos == UP)pos = MIDDLE;
-        front_leg_traget_state_ = pos;
-        hind_leg_traget_state_ = pos;
-        Lift_Legs_.optimizer_.ConfigImprovement(Control_Improvement::COSPLAN);
-    }
+    // void run(const pub_chassis_lift_cmd &cmd){
+    //     front_leg_traget_height_m = cmd.height_front_;
+    //     hind_leg_traget_height_m = cmd.height_hind_;
+    //     drive_traget_speed_m_s = 2.0f*cmd.speed_x_/geometry_.wheel_diameter_m;
+    //     Lift_Legs_.setAxisPos({front_leg_traget_height_m,hind_leg_traget_height_m},1.0f);
+    //     Lift_Drive_.setAxisSpeed({drive_traget_speed_m_s});
+    //     front_leg_actual_height_m = Lift_Legs_.getAxisPos()[0];
+    //     hind_leg_actual_height_m = Lift_Legs_.getAxisPos()[1];
 
     void run(const pub_chassis_lift_cmd &cmd){
-        front_leg_traget_height_m = cmd.height_front_;
-        hind_leg_traget_height_m = cmd.height_hind_;
-        drive_traget_speed_m_s = 2.0f*cmd.speed_x_/geometry_.wheel_diameter_m;
-        Lift_Legs_.setAxisPos({front_leg_traget_height_m,hind_leg_traget_height_m},1.0f);
+        drive_traget_speed_m_s = 2.0f*cmd.speed_x_/geometry_.wheel_diameter_m;    
+        lift_traget_state_ = cmd.state_;
+        complete_time = cmd.T;
+        // Lift_Legs_.setAxisPos({Lift_state_to_height[lift_traget_state_][0],Lift_state_to_height[lift_traget_state_][1]},complete_time);
+        Lift_Legs_.setAxisPos(Lift_state_to_height[lift_traget_state_],complete_time);
+        // Lift_Legs_.setAxisSpeed({0.0f,0.0f});
         Lift_Drive_.setAxisSpeed({drive_traget_speed_m_s});
         front_leg_actual_height_m = Lift_Legs_.getAxisPos()[0];
         hind_leg_actual_height_m = Lift_Legs_.getAxisPos()[1];
-
-        // if(front_leg_traget_state_ == UP && hind_leg_traget_state_ == UP){
-        //     LiftControlMode_ = ControlMode::MitCtrl;
-        //     Lift_Legs_.setAxisMit({{{-0.25f,0.0f,0.0f,0.0f,100.0f},{-0.25f,0.0f,0.0f,100.0f}}});
-        // }else {
-        //     switch (front_leg_traget_state_){
-        //         case LiftLegState::UP:{
-        //         }
-        //         case LiftLegState::MIDDLE:{
-        //             front_leg_traget_height_m = chassis_lift_MIDDLE;
-        //             break;
-        //         }
-        //         case LiftLegState::DOWN:{
-        //             front_leg_traget_height_m = chassis_lift_DOWN;
-        //             break;
-        //         }
-        //         case LiftLegState::RUNNING:{
-        //         }
-        //         default: break;
-        //     }
-        //     switch (hind_leg_traget_state_){
-        //         case LiftLegState::UP:{
-        //         }
-        //         case LiftLegState::MIDDLE:{
-        //             hind_leg_traget_height_m = chassis_lift_MIDDLE;
-        //             break;
-        //         }
-        //         case LiftLegState::DOWN:{
-        //             hind_leg_traget_height_m = chassis_lift_DOWN;
-        //             break;
-        //         }
-        //         case LiftLegState::RUNNING:{
-        //         }
-        //         default: break;
-        //     }
-        //     Lift_Legs_.setAxisPos({front_leg_traget_height_m,hind_leg_traget_height_m});
-        // }
-
-        // // Lift_Legs_.setAxisSpeed({0.0f,0.0f});
-        // // Lift_Drive_.setAxisSpeed({0.0f});
-
-        
-
-        // front_leg_actual_state_ = RUNNING;
-        // if(fabsf(front_leg_actual_height_m - chassis_lift_MIDDLE) >= 0.02f)front_leg_actual_state_ = MIDDLE;
-        // else if(fabsf(front_leg_actual_height_m - chassis_lift_DOWN) >= 0.02f)front_leg_actual_state_ = DOWN;
-        // else if(fabsf(front_leg_actual_height_m - chassis_lift_max_front_height) >= 0.02f)front_leg_actual_state_ = UP;
-
-        // hind_leg_actual_state_ = RUNNING;
-        // if(fabsf(hind_leg_actual_state_ - chassis_lift_MIDDLE) >= 0.02f)hind_leg_actual_state_ = MIDDLE;
-        // else if(fabsf(hind_leg_actual_state_ - chassis_lift_DOWN) >= 0.02f)hind_leg_actual_state_ = DOWN;
-        // else if(fabsf(hind_leg_actual_state_ - chassis_lift_max_hind_height) >= 0.02f)hind_leg_actual_state_ = UP;
+        if(Lift_Legs_.getAxisfinish()){
+            lift_actual_state_ = lift_traget_state_;
+        }
     }
 
-private:
+
+    LiftState getLiftState(){ return lift_actual_state_; }
+    
     GeneralAxis<2,4>& Lift_Legs_;
     GeneralAxis<1,2>& Lift_Drive_;
     Geometry geometry_{};
@@ -183,14 +92,25 @@ private:
     float drive_traget_speed_m_s = 0.0f;
     float drive_actual_speed_m_s = 0.0f;
 
-    LiftLegState front_leg_traget_state_ = UP;
-    LiftLegState hind_leg_traget_state_ = UP;
-    LiftLegState front_leg_actual_state_ = UP;
-    LiftLegState hind_leg_actual_state_ = UP;
+    std::optional<float> complete_time = std::nullopt;
+
+    LiftState lift_traget_state_;
+    LiftState lift_actual_state_;
+
+    LiftState lift_traget_state_last_;
+    LiftState lift_actual_state_last_;
 
     ControlMode LiftControlMode_ = PosCtrl;
     ControlMode DriveControlMode_ = SpeedCtrl;
 
     bool is_lift_preparing_ = false;
+
+    const std::array<std::array<float,2>,5> Lift_state_to_height = {{
+        {chassis_lift_front_UP,chassis_lift_hind_UP},
+        {chassis_lift_MIDDLE,chassis_lift_MIDDLE},
+        {chassis_lift_DOWN,chassis_lift_DOWN},
+        {chassis_lift_DOWN,chassis_lift_MIDDLE},
+        {chassis_lift_MIDDLE,chassis_lift_DOWN}
+    }};
 
 };

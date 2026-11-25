@@ -16,6 +16,8 @@
 #pragma once
 #include "fdcan.h"
 #include "rm_pocket.hpp"
+#include "optional"
+// #include "chassis_lift_solution.hpp"
 #include "usart.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -92,17 +94,26 @@ typedef struct {
 } pub_chassis_cmd;
 
 // 发布底盘抬升运动指令
-typedef struct {
-  float speed_x_{0};
-  float height_front_{0};
-  float height_hind_{0};
-} pub_chassis_lift_cmd;
-
 // typedef struct {
 //   float speed_x_{0};
-//   ChassisLift::LiftState front_leg_ = LiftState::UP;
-//   ChassisLift::LiftState hind_leg_ = LiftState::UP;
+//   float height_front_{0};
+//   float height_hind_{0};
 // } pub_chassis_lift_cmd;
+
+
+enum LiftState : size_t{
+    Collapse = 0,
+    Crouh = 1,
+    HoldUp = 2,
+    FrontHold = 3,
+    HindHold = 4
+};
+
+typedef struct {
+  float speed_x_{0};
+  LiftState state_;
+  std::optional<float> T = std::nullopt;
+} pub_chassis_lift_cmd;
 
 
 //Position模块数据结构体

@@ -73,11 +73,11 @@ void RobotDevices_Init() {
     chassis_lift_controller4.init(M3508_P19_SpeedPid,M3508_P19_PosPid);
     chassis_Lift.init(Control_Improvement::POLYNOMIAL,
                     {0.5f,0.6f,1.0f},
-                    M3508_P19_PosPid);
+                    {3.0f,0.6f,0.01f,2*M_PI,0.0f,NONE});
     chassis_Lift.ConfigAutoHome({0,1},
                                 {{AutoHomeParam_meter,-chassis_lift_max_front_height},{AutoHomeParam_meter,-chassis_lift_max_hind_height}});
     chassis_Lift.ConfigLimit({0,1},
-                             {{chassis_lift_limit_min,chassis_lift_limit_max},{chassis_lift_limit_min,chassis_lift_limit_min}});
+                             {{chassis_lift_limit_min,chassis_lift_limit_max},{chassis_lift_limit_min,chassis_lift_limit_max}});
 
     lift_Drive_motor1.init();
     lift_Drive_motor2.init();

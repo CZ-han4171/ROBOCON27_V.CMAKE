@@ -66,6 +66,7 @@ float imu_zero = 0.0f;
 bool imu_init = false;
 PidParam track_omega{5.30f,0.3f,0.55f,MAX_VELOCITY_ANGULAR*0.75,0.5f*kDegToRad,Integral_Limit};
 Chassis_data chassis_data;
+LiftState state_tmp;
 bool GPIOF9 = 0;
 bool GPIOD15 = 0;
 float_t debug_dt;
@@ -123,6 +124,11 @@ void controlTask(void *argument) {
         }
 
         {
+            GPIOF9 = HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_9) == GPIO_PIN_SET;
+            GPIOD15 = HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_15) == GPIO_PIN_SET;     
+        }
+
+        {
             if(control_rm_cmd.swD == RM_2_POS_SW_State_t::UP){
                 chassis_raw_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
                 chassis_raw_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
@@ -130,54 +136,88 @@ void controlTask(void *argument) {
 
                 float rm_angle_rad = atan2(chassis_raw_cmd.linear_y_, chassis_raw_cmd.linear_x_);
                 float v_aim = sqrt(chassis_raw_cmd.linear_x_ * chassis_raw_cmd.linear_x_ + chassis_raw_cmd.linear_y_ * chassis_raw_cmd.linear_y_);
-                chassis_pub_cmd.linear_x_ = v_aim * cos(rm_angle_rad - imu_sub_msg.yaw_rad);
-                chassis_pub_cmd.linear_y_ = v_aim * sin(rm_angle_rad - imu_sub_msg.yaw_rad);
+                chassis_pub_cmd.linear_x_ = v_aim * cos(rm_angle_rad - chassis_data.yaw);
+                chassis_pub_cmd.linear_y_ = v_aim * sin(rm_angle_rad - chassis_data.yaw);
                 chassis_pub_cmd.omega_ = chassis_raw_cmd.omega_;    
             }else if(control_rm_cmd.swD == RM_2_POS_SW_State_t::DOWN){
                 chassis_pub_cmd.linear_x_ = 0.0f;
-                chassis_pub_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, 0.4f);
+                chassis_pub_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_STAIR);
                 chassis_omega_optimizer.Run({0.0f}, {chassis_data.yaw});
                 chassis_pub_cmd.omega_ = chassis_omega_optimizer.GetSpeedOutput()[0];
-                GPIOF9 = HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_9) == GPIO_PIN_SET;
-                GPIOD15 = HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_15) == GPIO_PIN_SET;
+                
                 // float yaw_in = chassis_data.yaw - 
                 // chassis_pub_cmd.omega_ = 0.0f;    
             }
         }
 
         {
-            
+            state_tmp =  ChassisLift_solve.getLiftState();
             if(control_rm_cmd.swD == RM_2_POS_SW_State_t::UP){
                 chassis_lift_pub_cmd.speed_x_ = 0.0f;
-                chassis_lift_pub_cmd.height_front_ = chassis_lift_front_UP;
-                chassis_lift_pub_cmd.height_hind_ = chassis_lift_hind_UP;                
-            }else if(control_rm_cmd.swD == RM_2_POS_SW_State_t::DOWN){
+                chassis_lift_pub_cmd.state_ = LiftState::Collapse;
+                chassis_lift_pub_cmd.T = 1.0f;
+            }else{
                 chassis_lift_pub_cmd.speed_x_ = chassis_pub_cmd.linear_y_;
                 if(control_rm_last_cmd.swD == RM_2_POS_SW_State_t::UP){
-                    chassis_lift_pub_cmd.height_front_ = chassis_lift_MIDDLE;
-                    chassis_lift_pub_cmd.height_hind_ = chassis_lift_MIDDLE;
-                }else {
-                    if(control_rm_cmd.swC != control_rm_last_cmd.swC
-                    && control_rm_last_cmd.swC == RM_3_POS_SW_State_t::MIDDLE){
+                    chassis_lift_pub_cmd.state_ = LiftState::Crouh;
+                        chassis_lift_pub_cmd.T = 0.5f;
+                }else if(control_rm_cmd.swC != control_rm_last_cmd.swC){
+                    if(control_rm_last_cmd.swC == RM_3_POS_SW_State_t::MIDDLE){
                         if(control_rm_cmd.swC == RM_3_POS_SW_State_t::UP){
-                            chassis_lift_pub_cmd.height_front_ = chassis_lift_MIDDLE;
-                            chassis_lift_pub_cmd.height_hind_ = chassis_lift_MIDDLE;
+                            chassis_lift_pub_cmd.state_ = LiftState::Crouh;
+                            chassis_lift_pub_cmd.T = 1.0f;
                         }else if(control_rm_cmd.swC == RM_3_POS_SW_State_t::DOWN){
-                            chassis_lift_pub_cmd.height_front_ = chassis_lift_DOWN;
-                            chassis_lift_pub_cmd.height_hind_ = chassis_lift_DOWN;
+                            chassis_lift_pub_cmd.state_ = LiftState::HoldUp;
+                            chassis_lift_pub_cmd.T = 1.0f;
                         }
-                    }else if(control_rm_cmd.swB != control_rm_last_cmd.swB 
-                            && control_rm_last_cmd.swB == RM_3_POS_SW_State_t::MIDDLE){
-                        if(control_rm_cmd.swB == RM_3_POS_SW_State_t::UP){
-                            if(chassis_lift_pub_cmd.height_front_ == chassis_lift_MIDDLE)chassis_lift_pub_cmd.height_front_ = chassis_lift_DOWN;
-                            else if(chassis_lift_pub_cmd.height_front_ == chassis_lift_DOWN)chassis_lift_pub_cmd.height_front_ = chassis_lift_MIDDLE;
-                        }else if(control_rm_cmd.swB == RM_3_POS_SW_State_t::DOWN){
-                            if(chassis_lift_pub_cmd.height_hind_ == chassis_lift_MIDDLE)chassis_lift_pub_cmd.height_hind_ = chassis_lift_DOWN;
-                            else if(chassis_lift_pub_cmd.height_hind_ == chassis_lift_DOWN)chassis_lift_pub_cmd.height_hind_ = chassis_lift_MIDDLE;
-                        }
-                    }    
+                    }
+                }else if(state_tmp == LiftState::HoldUp){
+                    if(!GPIOF9){
+                        chassis_lift_pub_cmd.state_ = LiftState::HindHold;
+                        chassis_lift_pub_cmd.T = 0.35f;
+                    }
+                }else if(state_tmp == LiftState::HindHold){
+                    if(!GPIOD15){
+                        chassis_lift_pub_cmd.state_ = LiftState::Crouh;
+                        chassis_lift_pub_cmd.T = 0.35f;
+                    }
                 }
             }
+        }
+
+        {
+            
+            // if(control_rm_cmd.swD == RM_2_POS_SW_State_t::UP){
+            //     chassis_lift_pub_cmd.speed_x_ = 0.0f;
+            //     chassis_lift_pub_cmd.height_front_ = chassis_lift_front_UP;
+            //     chassis_lift_pub_cmd.height_hind_ = chassis_lift_hind_UP;                
+            // }else if(control_rm_cmd.swD == RM_2_POS_SW_State_t::DOWN){
+            //     chassis_lift_pub_cmd.speed_x_ = chassis_pub_cmd.linear_y_;
+            //     if(control_rm_last_cmd.swD == RM_2_POS_SW_State_t::UP){
+            //         chassis_lift_pub_cmd.height_front_ = chassis_lift_MIDDLE;
+            //         chassis_lift_pub_cmd.height_hind_ = chassis_lift_MIDDLE;
+            //     }else {
+            //         if(control_rm_cmd.swC != control_rm_last_cmd.swC
+            //         && control_rm_last_cmd.swC == RM_3_POS_SW_State_t::MIDDLE){
+            //             if(control_rm_cmd.swC == RM_3_POS_SW_State_t::UP){
+            //                 chassis_lift_pub_cmd.height_front_ = chassis_lift_MIDDLE;
+            //                 chassis_lift_pub_cmd.height_hind_ = chassis_lift_MIDDLE;
+            //             }else if(control_rm_cmd.swC == RM_3_POS_SW_State_t::DOWN){
+            //                 chassis_lift_pub_cmd.height_front_ = chassis_lift_DOWN;
+            //                 chassis_lift_pub_cmd.height_hind_ = chassis_lift_DOWN;
+            //             }
+            //         }else if(control_rm_cmd.swB != control_rm_last_cmd.swB 
+            //                 && control_rm_last_cmd.swB == RM_3_POS_SW_State_t::MIDDLE){
+            //             if(control_rm_cmd.swB == RM_3_POS_SW_State_t::UP){
+            //                 if(chassis_lift_pub_cmd.height_front_ == chassis_lift_MIDDLE)chassis_lift_pub_cmd.height_front_ = chassis_lift_DOWN;
+            //                 else if(chassis_lift_pub_cmd.height_front_ == chassis_lift_DOWN)chassis_lift_pub_cmd.height_front_ = chassis_lift_MIDDLE;
+            //             }else if(control_rm_cmd.swB == RM_3_POS_SW_State_t::DOWN){
+            //                 if(chassis_lift_pub_cmd.height_hind_ == chassis_lift_MIDDLE)chassis_lift_pub_cmd.height_hind_ = chassis_lift_DOWN;
+            //                 else if(chassis_lift_pub_cmd.height_hind_ == chassis_lift_DOWN)chassis_lift_pub_cmd.height_hind_ = chassis_lift_MIDDLE;
+            //             }
+            //         }    
+            //     }
+            // }
             
         }
 
