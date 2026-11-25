@@ -110,6 +110,10 @@ public:
         AutoHome_complete = false;
     }
 
+    void ConfigFinishParam( float pos_tolerance, float speed_tolerance){
+        optimizer_.ConfigFinishParam(pos_tolerance,speed_tolerance);
+    }
+
     void Limit_solve(ControlFloatArray &Axis_pos_in){
         for(std::size_t i = 0 ; i < ControlCount ; ++i){
             if(is_limit_[i])Axis_pos_in[i] = std::clamp(Axis_pos_in[i], travel_limit_[i].min, travel_limit_[i].max);
@@ -256,10 +260,13 @@ public:
     }
     virtual ControlFloatArray getAxisPos(){ return Axis_actual_pos_; };
     virtual ControlFloatArray getAxisSpeed(){ return Axis_actual_speed_; };
+    virtual ControlFloatArray getAxisTorque(){ return Axis_actual_torque_; };
 
     virtual void dispatchCommand(ControlMode ctrl_mode){};
 
     MotorFloatArray getMotorPerOutput(){ return motor_rad_per_output_; }
+
+    bool getAxisfinish(){ return optimizer_.Getfinish(); }
     
     std::array<MotorControllerBase*, MotorCount> MotorControllers_;
     MotorFloatArray motor_rad_per_output_;
