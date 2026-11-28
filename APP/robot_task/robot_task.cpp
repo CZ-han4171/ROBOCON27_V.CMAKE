@@ -39,6 +39,7 @@ extern osThreadId_t uart4ProcessTaskHandle;
 extern osThreadId_t uart5ProcessTaskHandle;
 extern osThreadId_t Debug_TaskHandle;
 extern osThreadId_t ChassisTaskHandle;
+extern osThreadId_t ChassisDataTaskHandle;
 extern osThreadId_t ControlTaskHandle;
 extern osThreadId_t usbcdcProcessTaskHandle;
 extern osThreadId_t usbcdcSendTaskHandle;
@@ -84,6 +85,14 @@ void osTaskInit(void) {
   };
   ChassisTaskHandle =
       osThreadNew(chassisTask, NULL, &ChassisTaskHandle_attributes);
+
+  const osThreadAttr_t ChassisDataTaskHandle_attributes = {
+      .name = "ChassisData_TaskHandle",
+      .stack_size = 256 * 4,
+      .priority = (osPriority_t)osPriorityNormal,
+  };
+  ChassisDataTaskHandle =
+      osThreadNew(ChassisDataTask, NULL, &ChassisDataTaskHandle_attributes);
 
   const osThreadAttr_t ControlTaskHandle_attributes = {
       .name = "Control_TaskHandle",

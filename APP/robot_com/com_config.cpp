@@ -35,7 +35,7 @@
 #include "tim.h"
 #include "WitMotionImu.hpp"
 #include "topics.hpp"
-#include "topic_pool.h"
+#include "topic_pool.hpp"
 #include "usart.h"
 
 #include "chassis_solution.hpp" //访问底盘控制器用于串口调参

@@ -16,8 +16,9 @@
 #include "Axis.hpp"
 #include "Encoder.hpp"
 #include "Motor.hpp"
+#include "bsp_dwt.h"
 #include "pid_controller.hpp"
-#include "topic_pool.h"
+#include "topic_pool.hpp"
 #include "tool.hpp"
 
 #include <array>
@@ -35,80 +36,124 @@ struct Chassis_data{
     float w;
 };
 
+template <std::size_t WheelCount>
 class OmniChassis {
 public:
-    enum WheelIndex : size_t {
-        kLeftUp = 0,
-        kRightUp = 1,
-        kLeftDown = 2,
-        kRightDown = 3,
-        kWheelCount = 4,
-    };
+    // enum WheelIndex : size_t {
+    //     kLeftUp = 0,
+    //     kRightUp = 1,
+    //     kLeftDown = 2,
+    //     kRightDown = 3,
+    //     kWheelCount = 4,
+    // };
 
     struct Geometry {
-        float wheel_diameter_m; // 轮径
-        float track_width_m;    // 轮距
-        float wheel_base_m;     // 轴距
+        float wheel_diameter_m;
+        float x_m;
+        float y_m;
+        float rolling_angle_rad;
+        
 
-        Geometry(float wheel_diameter = 0.129f, float track_width = 1.025f,
-                 float wheel_base = 1.025f)
-            : wheel_diameter_m(wheel_diameter), track_width_m(track_width),
-              wheel_base_m(wheel_base) {}
+        Geometry(float wheel_diameter = 0.129f,
+                 float x = 0.0f,float y = 0.0f,
+                 float rolling_angle = 0.0f)
+            : wheel_diameter_m(wheel_diameter),
+              x_m(x),y_m(y),
+              rolling_angle_rad(rolling_angle) {}
     };
 
     // 轮序固定为 [左上, 右上, 左下, 右下]
     OmniChassis(GeneralAxis<4,4> &OmniWheels,
-                const Geometry &geometry = Geometry())
+                float &yaw,
+                const std::array<Geometry,WheelCount> geometries)
         : OmniWheels_{OmniWheels},
-          geometry_(geometry) {
+          yaw_(yaw),
+          geometries_(geometries) {
     }
 
-    void configureGeometry(const Geometry &geometry) { geometry_ = geometry; }
+    // void configureGeometry(const Geometry &geometry) { geometry_ = geometry; }
+
+    // 运动学正解
+    Chassis_data forwardKinematics(Chassis_data chassis_data_in) const {
+        Chassis_data chassis_data_tmp{};
+
+        // const float kCosYaw = cosf(yaw_);
+        // const float kSinYaw = sinf(yaw_);
+
+        // constexpr float kSqrt2 = sqrt(2.0f); // √2
+        // const float rad_s_to_mps = geometry_.wheel_diameter_m / 2.0f;
+        // const float vx_body = (-Wheel_actual_speed_rad[0] + Wheel_actual_speed_rad[1] - Wheel_actual_speed_rad[2] + Wheel_actual_speed_rad[3])
+        //                   *rad_s_to_mps*kSqrt2/4.0f;
+        // const float vy_body = ( Wheel_actual_speed_rad[0] + Wheel_actual_speed_rad[1] - Wheel_actual_speed_rad[2] - Wheel_actual_speed_rad[3])
+        //                   *rad_s_to_mps*kSqrt2/4.0f;
+        // const float w_body  = ( Wheel_actual_speed_rad[0] + Wheel_actual_speed_rad[1] + Wheel_actual_speed_rad[2] + Wheel_actual_speed_rad[3])
+        //                   /(4.0f*);
+
+        // chassis_data_tmp.vx =  vx_body*kCosYaw - vy_body*kSinYaw;
+        // chassis_data_tmp.vy =  vx_body*kSinYaw + vy_body*kCosYaw;
+        // chassis_data_tmp.w  =  w_body;
+
+        // chassis_data_tmp.x  = chassis_data_in.x + chassis_data_tmp.vx*dt;
+        // chassis_data_tmp.y  = chassis_data_in.y + chassis_data_tmp.vy*dt;
+        // chassis_data_tmp.yaw= yaw_;
+
+        return chassis_data_tmp;
+    }
 
     // 运动学逆解：输入底盘速度命令，输出每个轮子的目标角速度(rad/s)
-    std::array<float, 4> solveWheelRadPerSec(
+    std::array<float, 4> inverseKinematics(
         const pub_chassis_cmd &cmd) const {
         const float vx = cmd.linear_x_;
         const float vy = cmd.linear_y_;
         const float wz = cmd.omega_;
 
-        const float rotation_term = geometry_.track_width_m * 0.5f * wz;
+        // const float rotation_term = geometry_.track_width_m * 0.5f * wz;
 
-        constexpr float kInvSqrt2 = 0.70710678f; // 1/√2
-        const float v_lu = (-vx - vy) * kInvSqrt2 + rotation_term;
-        const float v_ru = (-vx + vy) * kInvSqrt2 + rotation_term;
-        const float v_ld = ( vx - vy) * kInvSqrt2 + rotation_term;
-        const float v_rd = ( vx + vy) * kInvSqrt2 + rotation_term;
+        // constexpr float kInvSqrt2 = 0.70710678f; // 1/√2
 
-        const float mps_to_rad_s = 2.0f / geometry_.wheel_diameter_m;
-        return {v_lu * mps_to_rad_s, v_ru * mps_to_rad_s,
-                v_ld * mps_to_rad_s, v_rd * mps_to_rad_s};
+        std::array<float,WheelCount> volatiles;
+        for( std::size_t i = 0 ; i < WheelCount ; ++i){
+            const float Cos = cosf(geometries_[i].rolling_angle_rad);
+            const float Sin = sinf(geometries_[i].rolling_angle_rad);
+
+            volatiles[i] = (vx*Cos + vy*Sin + wz*(geometries_[i].x_m*Sin - geometries_[i].y_m*Cos))/geometries_[i].wheel_diameter_m;
+        }
+        return volatiles;
+        // const float v_lu = (-vx + vy) * kInvSqrt2 + rotation_term;
+        // const float v_ru = ( vx + vy) * kInvSqrt2 + rotation_term;
+        // const float v_ld = (-vx - vy) * kInvSqrt2 + rotation_term;
+        // const float v_rd = ( vx - vy) * kInvSqrt2 + rotation_term;
+
+        // const float mps_to_rad_s = 2.0f / geometry_.wheel_diameter_m;
     }
 
     // 输入底盘速度命令，完成 解算→Axis速度设置
     void run(const pub_chassis_cmd &cmd) {
-        Wheel_traget_speed_rad = solveWheelRadPerSec(cmd);
+        dt = DWT_GetDeltaT(&DWT_CNT);
+        Wheel_traget_speed_rad = inverseKinematics(cmd);
         OmniWheels_.setAxisSpeed(Wheel_traget_speed_rad);
         Wheel_actual_speed_rad = OmniWheels_.getAxisSpeed();
+
+        chassis_date_out_ = forwardKinematics(chassis_data_in_);
     }
+
+    Chassis_data getChassisData(){ return chassis_date_out_; }
+    void SendChassisData(Chassis_data chassis_data_in){ chassis_data_in_ = chassis_data_in; }
 
 private:
 
-    // static void applyPidParam(PID_t &pid, const SpeedPidParam &param) {
-    //     pid = {};
-    //     pid.Kp = param.kp;
-    //     pid.Ki = param.ki;
-    //     pid.Kd = param.kd;
-    //     pid.MaxOut = param.max_out;
-    //     pid.DeadBand = param.deadband;
-    //     pid.Improve = param.improve;
-    //     PID_Init(&pid);
-    // }
-
     GeneralAxis<4,4>& OmniWheels_;
-    Geometry geometry_{};
-    std::array<float, kWheelCount> Wheel_traget_speed_rad;
-    std::array<float, kWheelCount> Wheel_actual_speed_rad;
+    float &yaw_;
+    std::array<Geometry, WheelCount> geometries_{};
+    std::array<float, WheelCount> Wheel_traget_speed_rad;
+    std::array<float, WheelCount> Wheel_actual_speed_rad;
+
+    Chassis_data chassis_data_in_{};
+    Chassis_data chassis_date_out_{};
+
+    float dt;
+    uint32_t DWT_CNT;
+    
 };
 
 // class SwerveChassis4 {

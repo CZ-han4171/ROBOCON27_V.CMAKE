@@ -92,7 +92,7 @@ include_sub_directories_recursively(${CMAKE_SOURCE_DIR}/Module)
 include_sub_directories_recursively(${CMAKE_SOURCE_DIR}/Algorithm)
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user defined include paths
+    "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/eigen"
 )
 
 # Add project symbols (macros)

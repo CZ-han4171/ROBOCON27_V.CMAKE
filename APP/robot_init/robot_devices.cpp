@@ -13,7 +13,7 @@
  */
 #include "main.h"
 #include "tool.hpp"
-#include "topic_pool.h"
+#include "topic_pool.hpp"
 #include "topics.hpp"
 #include <cmath>
 #include <cstdint>

@@ -24,7 +24,7 @@
 #include "stm32h723xx.h"
 #include "stm32h7xx_hal_gpio.h"
 #include "tool.hpp"
-#include "topic_pool.h"
+#include "topic_pool.hpp"
 #include "topics.hpp"
 #include "bsp_usart.h"
 #include "tracking.h"
@@ -35,13 +35,14 @@
 #include "MotorControl.hpp"
 #include "Axis.hpp"
 #include "Encoder.hpp"
+#include "photogate.hpp"
 #include "robot_devices.hpp"
 #include <algorithm>
 
 osThreadId_t ControlTaskHandle;
 
 // ===== 发布者 =====
-TypedTopicPublisher<pub_chassis_cmd> chassis_data_pub("chassis_cmd");
+TypedTopicPublisher<pub_chassis_cmd> chassis_cmd_pub("chassis_cmd");
 pub_chassis_cmd chassis_pub_cmd{};
 pub_chassis_cmd chassis_raw_cmd{};
 
@@ -62,24 +63,24 @@ pub_chassis_cmd state_now_cmd{};
 
 //debug begin
 ControlOptimizer<1> chassis_omega_optimizer;
-float imu_zero = 0.0f;
-bool imu_init = false;
 PidParam track_omega{5.30f,0.3f,0.55f,MAX_VELOCITY_ANGULAR*0.75,0.5f*kDegToRad,Integral_Limit};
-Chassis_data chassis_data;
+float chassis_yaw;
 LiftState state_tmp;
-uint8_t F9_count = 0;
-uint8_t D15_count = 0;
-bool GPIOF9 = 0;
-bool is_F9 = 0;
-bool GPIOD15 = 0;
-bool is_D15 = 0;
+// uint8_t F9_count = 0;
+// uint8_t D15_count = 0;
+// bool GPIOF9 = 0;
+// bool is_F9 = 0;
+// bool GPIOD15 = 0;
+// bool is_D15 = 0;
+Photogate front_leg_judgement(GPIOF,GPIO_PIN_9,0.005f,1);
+Photogate hind_leg_judgement(GPIOD,GPIO_PIN_15,0.005f,1);
 float_t debug_dt;
 uint32_t debug_DWT_CNT;
 float watch[10];
 //debug end
 
 void controlInit() {
-    if (!chassis_data_pub.IsValid()) {
+    if (!chassis_cmd_pub.IsValid()) {
         return;
     }
 
@@ -97,6 +98,9 @@ void controlTask(void *argument) {
     TickType_t currentTime = xTaskGetTickCount();
     TickType_t rmUpdateTime = currentTime;
     constexpr TickType_t kRemoteInputTimeout = pdMS_TO_TICKS(500);
+
+    float imu_zero = 0.0f;
+    bool imu_init = false;
 
     control_rm_cmd.joyLHori = kJoyCenter;
     control_rm_cmd.joyLVert = kJoyCenter;
@@ -124,50 +128,29 @@ void controlTask(void *argument) {
                 imu_zero = imu_sub_msg.yaw_rad;
                 imu_init = true;
             }
-            chassis_data.yaw = imu_sub_msg.yaw_rad - imu_zero;
+            chassis_yaw = imu_sub_msg.yaw_rad - imu_zero;
         }
 
         {
-            GPIOF9 = HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_9) == GPIO_PIN_SET;
-            GPIOD15 = HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_15) == GPIO_PIN_SET;
-            
-            if(!GPIOF9){
-                F9_count++;
-                if(F9_count >= 5){
-                    is_F9 = false;
-                    F9_count = 0;
-                }
-            }else{
-                is_F9 = true;
-                F9_count = 0;
-            }
-            if(!GPIOD15){
-                D15_count++;
-                if(D15_count >= 5){
-                    is_D15 = false;
-                    D15_count = 0;
-                }
-            }else{
-                is_D15 = true;
-                D15_count = 0;
-            }
+            front_leg_judgement.Update();
+            hind_leg_judgement.Update();
         }
 
         {
             if(control_rm_cmd.swD == RM_2_POS_SW_State_t::UP){
-                chassis_raw_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
-                chassis_raw_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
+                chassis_raw_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
+                chassis_raw_cmd.linear_y_ = -JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
                 chassis_raw_cmd.omega_    = -JoyToVelocity(control_rm_cmd.joyRHori, kJoyDeadZoneRight, MAX_VELOCITY_ANGULAR);
 
                 float rm_angle_rad = atan2(chassis_raw_cmd.linear_y_, chassis_raw_cmd.linear_x_);
                 float v_aim = sqrt(chassis_raw_cmd.linear_x_ * chassis_raw_cmd.linear_x_ + chassis_raw_cmd.linear_y_ * chassis_raw_cmd.linear_y_);
-                chassis_pub_cmd.linear_x_ = v_aim * cos(rm_angle_rad - chassis_data.yaw);
-                chassis_pub_cmd.linear_y_ = v_aim * sin(rm_angle_rad - chassis_data.yaw);
+                chassis_pub_cmd.linear_x_ = v_aim * cos(rm_angle_rad - chassis_yaw);
+                chassis_pub_cmd.linear_y_ = v_aim * sin(rm_angle_rad - chassis_yaw);
                 chassis_pub_cmd.omega_ = chassis_raw_cmd.omega_;    
             }else if(control_rm_cmd.swD == RM_2_POS_SW_State_t::DOWN){
-                chassis_pub_cmd.linear_x_ = 0.0f;
-                chassis_pub_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_STAIR);
-                chassis_omega_optimizer.Run({0.0f}, {chassis_data.yaw});
+                chassis_pub_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
+                chassis_pub_cmd.linear_y_ = 0.0f;
+                chassis_omega_optimizer.Run({0.0f}, {chassis_yaw});
                 chassis_pub_cmd.omega_ = chassis_omega_optimizer.GetSpeedOutput()[0];
                 
                 // float yaw_in = chassis_data.yaw - 
@@ -182,7 +165,7 @@ void controlTask(void *argument) {
                 chassis_lift_pub_cmd.state_ = LiftState::Collapse;
                 chassis_lift_pub_cmd.T = 1.0f;
             }else{
-                chassis_lift_pub_cmd.speed_x_ = chassis_pub_cmd.linear_y_;
+                chassis_lift_pub_cmd.speed_x_ = chassis_pub_cmd.linear_x_;
                 if(control_rm_last_cmd.swD == RM_2_POS_SW_State_t::UP){
                     chassis_lift_pub_cmd.state_ = LiftState::Crouh;
                         chassis_lift_pub_cmd.T = 0.5f;
@@ -197,12 +180,12 @@ void controlTask(void *argument) {
                         }
                     }
                 }else if(state_tmp == LiftState::HoldUp){
-                    if(!is_F9){
+                    if(front_leg_judgement.getPotogate()){
                         chassis_lift_pub_cmd.state_ = LiftState::HindHold;
                         chassis_lift_pub_cmd.T = 0.3f;
                     }
                 }else if(state_tmp == LiftState::HindHold){
-                    if(!is_D15){
+                    if(hind_leg_judgement.getPotogate()){
                         chassis_lift_pub_cmd.state_ = LiftState::Crouh;
                         chassis_lift_pub_cmd.T = 0.3f;
                     }
@@ -253,7 +236,7 @@ void controlTask(void *argument) {
         }
 
         chassis_lift_data_pub.Publish(chassis_lift_pub_cmd);
-        chassis_data_pub.Publish(chassis_pub_cmd);
+        chassis_cmd_pub.Publish(chassis_pub_cmd);
 
         vTaskDelayUntil(&currentTime, 1);
     }

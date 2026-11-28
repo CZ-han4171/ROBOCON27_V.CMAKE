@@ -26,7 +26,7 @@
 #include "pid_controller.hpp"
 #include "ControlOptimize.hpp"
 #include "tool.hpp"
-#include "topic_pool.h"
+#include "topic_pool.hpp"
 #include <functional>
 
 // #define stall_timeout_s_ 1.0f // 自动归位检测时长

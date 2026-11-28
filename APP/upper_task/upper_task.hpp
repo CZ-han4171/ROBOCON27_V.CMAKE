@@ -5,6 +5,6 @@
 
 #include "task.h"
 #include "topics.hpp"
-#include "topic_pool.h"
+#include "topic_pool.hpp"
 
 void VPTask(void *argument);

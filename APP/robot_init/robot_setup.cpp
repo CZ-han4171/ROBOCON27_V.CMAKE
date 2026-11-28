@@ -20,7 +20,7 @@
 #include "com_config.hpp"
 #include "pid_controller.hpp"
 #include "tool.hpp"
-#include "topic_pool.h"
+#include "topic_pool.hpp"
 #include "topics.hpp"
 #include "robot_devices.hpp"
 #include "robot_params.hpp"
