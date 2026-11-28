@@ -37,16 +37,9 @@
 osThreadId_t ControlTaskHandle;
 
 // ===== 发布者 =====
-TypedTopicPublisher<pub_chassis_cmd> chassis_data_pub("chassis_cmd");
-pub_chassis_cmd rm_cmd{};
-
 TypedTopicSubscriber<pub_RM_Data> control_rm_sub("rm", 8);
 pub_RM_Data control_rm_cmd{};
 pub_RM_Data control_rm_cmd_last{};
-
-pub_chassis_cmd robot_v_aim_cmd{};
-pub_chassis_cmd state_now_cmd{};
-
 //debug begin
 float_t debug_dt;
 uint32_t debug_DWT_CNT;
@@ -54,10 +47,6 @@ float watch[10];
 //debug end
 
 void controlInit() {
-    if (!chassis_data_pub.IsValid()) {
-        return;
-    }
-
     if (!control_rm_sub.IsValid()) {
         return;
     }
@@ -89,25 +78,11 @@ void controlTask(void *argument) {
         }
         control_rm_cmd_last = control_rm_cmd;
 
-        {
-            rm_cmd.linear_x_ = JoyToVelocity(control_rm_cmd.joyLHori, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
-            rm_cmd.linear_y_ = JoyToVelocity(control_rm_cmd.joyLVert, kJoyDeadZoneLeft, MAX_VELOCITY_LINEAR);
-            rm_cmd.omega_    = -JoyToVelocity(control_rm_cmd.joyRHori, kJoyDeadZoneRight, MAX_VELOCITY_ANGULAR);
-
-            float rm_angle_deg = atan2(rm_cmd.linear_y_, rm_cmd.linear_x_) / kDegToRad;
-            float v_aim = sqrt(rm_cmd.linear_x_ * rm_cmd.linear_x_ + rm_cmd.linear_y_ * rm_cmd.linear_y_);
-            robot_v_aim_cmd.linear_x_ = v_aim * cos((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
-            robot_v_aim_cmd.linear_y_ = v_aim * sin((rm_angle_deg - state_now_cmd.omega_) * kDegToRad);
-            robot_v_aim_cmd.omega_ = rm_cmd.omega_;    
-        }
-
         {   
             /////////////////debug begin///////////////////////
             
             /////////////////debug end///////////////////////
         }
-
-        chassis_data_pub.Publish(robot_v_aim_cmd);
 
         vTaskDelayUntil(&currentTime, 1);
     }
