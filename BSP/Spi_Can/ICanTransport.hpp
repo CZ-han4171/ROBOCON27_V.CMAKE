@@ -1,14 +1,6 @@
 /**
  * @file ICanTransport.hpp
- * @brief CAN 传输层接口，片上 FDCAN 和 SPI 外挂控制器共用
- * @version 0.1
- * @date 2026-11-07
- *
- * @copyright Copyright (c) 2026
- *
- * @attention :
- * @note : 只依赖 cstdint，不引 HAL，可以在纯算法环境里单独编译
- * @versioninfo :
+ * @brief CAN 传输层接口，片上 FDCAN 和 SPI 外挂控制器共用（只依赖 cstdint，不引 HAL）
  */
 #pragma once
 
@@ -19,11 +11,7 @@ namespace BspCan {
 // CAN FD 单帧最大载荷
 static constexpr uint8_t kFdMaxPayload = 64;
 
-/**
- * @brief 统一帧结构，经典帧和 FD 帧共用
- *
- * data 固定 64 字节，经典帧只用前 8 个，栈上开销 72 字节。
- */
+// 统一帧结构：data 固定 64 字节，经典帧只用前 8 个
 struct FdFrame {
   uint32_t id = 0;    // 11 位标准 ID 或 29 位扩展 ID
   uint8_t len = 0;    // 实际字节数 0 ~ 64
@@ -67,12 +55,7 @@ inline uint8_t dlcToLen(uint8_t dlc) {
   return kDlcTable[dlc & 0x0F];
 }
 
-/**
- * @brief 传输层接口
- *
- * 实现方只管把一帧塞进硬件、从硬件取一帧，
- * 设备匹配、发送队列、路由留在 CanBus 层。
- */
+// 传输层接口：实现方只负责把一帧塞进硬件 / 从硬件取一帧
 class ICanTransport {
 public:
   virtual ~ICanTransport() = default;
@@ -91,9 +74,6 @@ public:
 
   // false = bus-off，需要重新初始化
   virtual bool busHealthy() const = 0;
-
-  // 错误计数快照，调试用
-  virtual void errorCounters(uint8_t &tec, uint8_t &rec) const = 0;
 };
 
 } // namespace BspCan

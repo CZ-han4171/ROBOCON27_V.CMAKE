@@ -1,16 +1,9 @@
-/**
+﻿/**
  * @file Mcp2518fd.hpp
- * @brief MCP2518FD CAN FD 控制器寄存器级驱动
- * @version 0.1
- * @date 2026-11-07
+ * @brief MCP2518FD 寄存器级驱动（SPI 由外部注入，不依赖 HAL / RTOS）
  *
- * @copyright Copyright (c) 2026
- *
- * @attention : 本驱动不依赖 HAL 和 RTOS，SPI 收发由外部注入
- * @note : 1. 所有等待都用循环计数，初始化阶段可以在关中断环境下调用
- *         2. 位时序由外部给出的 SYSCLK 和目标波特率换算，见 calcTiming
- *         3. 未实现：TEF、时间戳、TDC、ECC、低功耗唤醒
- * @versioninfo :
+ * 报文 RAM 布局（本片实测）：0x400~0x407 留空 | TXQ @0x408 | FIFO1 @0x418（每条 16 B）
+ * CiTXQUA / CiFIFOUA1 只读，回读值是"相对 0x400 的偏移"，不能当地址写
  */
 #pragma once
 
@@ -21,119 +14,110 @@
 
 namespace BspCan {
 
-/**
- * @brief SPI 通道，MCU 侧实现
- *
- * 一次调用完成一次全双工收发，片选由实现内部控制。
- */
+// SPI 通道，由 MCU 侧实现；一次调用完成一次全双工收发
 struct SpiPort {
   void *ctx = nullptr;
-  // 返回 false 表示 HAL 层出错（超时 / 忙）
   bool (*xfer)(void *ctx, const uint8_t *tx, uint8_t *rx, uint16_t len) = nullptr;
 };
 
-// 单个位时序段，编码值 = 实际长度 - 1（手册：0000 0000 表示 1 个 TQ）
+// 编码值 = 实际长度 - 1
 struct BitTiming {
-  uint8_t brp = 0;    // 波特率预分频 - 1
-  uint8_t tseg1 = 0;  // PropSeg + PhaseSeg1 - 1
-  uint8_t tseg2 = 0;  // PhaseSeg2 - 1
-  uint8_t sjw = 0;    // 同步跳宽 - 1
+  uint8_t brp = 0;
+  uint8_t tseg1 = 0;
+  uint8_t tseg2 = 0;
+  uint8_t sjw = 0;
 };
 
 struct TimingConfig {
-  BitTiming nominal;  // 仲裁段
-  BitTiming data;     // 数据段，只对 BRS=1 的帧生效
+  BitTiming nominal;
+  BitTiming data;  // 仅 BRS=1 的 FD 帧
 };
 
 class Mcp2518fd {
 public:
-  // 接收用 C1FIFO1，改这里要同步改 CanBus 层
   static constexpr uint8_t kRxFifoIndex = 1;
-  static constexpr uint8_t kTxDepth = 4;
-  static constexpr uint8_t kRxDepth = 16;
+  static constexpr uint8_t kTxDepth = 1;     // 本片只验证过 TXQ 单槽位
+  static constexpr uint8_t kRxDepth = 16;    // 1 kHz 反馈下留 3 倍余量
+  static constexpr uint8_t kMaxPayload = 8;  // PLSIZE=8，对象 = 8 头 + 8 数据
 
   struct Config {
-    uint32_t sysclkHz = 40000000;  // 40MHz 直供或 4MHz 晶振开 PLL 后都是 40M
-    bool usePll = false;           // 4MHz 晶振 + PLL x10 时置 true
-    bool isoCanFd = true;          // 与对端节点必须一致，配错 CRC 算法不同
+    uint32_t sysclkHz = 20000000;
+    bool usePll = false;   // 4 MHz 晶振开 x10 PLL 时置 true
+    bool isoCanFd = true;  // 必须与对端一致
     TimingConfig timing;
-    uint32_t modeTimeoutLoops = 2000;  // 模式切换的循环上限，一次循环约一次 SFR 读
+    uint32_t modeTimeoutLoops = 2000;
   };
 
-  // C1TREC 快照
   struct Status {
-    uint8_t tec = 0;     // 发送错误计数
-    uint8_t rec = 0;     // 接收错误计数
+    uint8_t tec = 0;
+    uint8_t rec = 0;
     bool busOff = false;
   };
 
   explicit Mcp2518fd(SpiPort spi) : spi_(spi) {}
 
-  // 复位 -> 时钟 -> 位时序 -> FIFO/过滤器 -> 正常模式
   bool init(const Config &cfg);
 
-  // 读芯片 ID，[3:0]=REV [7:4]=ID，用来确认 SPI 链路是通的
+  // 本片 DEVID 恒回 0，判活请用 linkSelfTest()
   bool readDevId(uint8_t &id, uint8_t &rev);
+  bool spiReset() const;
+  bool linkSelfTest();
 
-  // ---- 发送 / 接收 ----
   bool pushTx(const FdFrame &frame);
   bool popRx(FdFrame &frame);
   bool txQueueFull() const;
 
-  // ---- 中断与状态 ----
-  // 读 C1INT 原始值，调试/统计用；IF 段是实时状态，读它不会清标志
   uint32_t readInterrupt();
-  // 清掉挂起的可清中断（IVMIF/WAKIF/CERRIF/SERRIF/MODIF），不动中断使能位
   void clearInterrupt();
-  uint32_t readFifoStatus(uint8_t fifo) const;
+
+  // bit16=NBIT0ERR 收发器没驱动总线；bit18=NACKERR 没人应答
+  uint32_t readBDiag1() const { return readSfr(mcp2518fd::kRegC1BDiag1); }
+
   bool busHealthy() const;
-  void errorCounters(uint8_t &tec, uint8_t &rec) const;
   Status status() const;
 
-  // 底层 SPI 一次都没失败过才算健康。超时/芯片不应答都会累加，
-  // 上层据此停止出队并重新初始化，避免"发了但其实没发出去"
   bool spiHealthy() const { return xferFail_ == 0U; }
   uint32_t spiFailCount() const { return xferFail_; }
+  uint32_t rxOverflowCount() const { return rxOvCount_; }
 
-  /**
-   * @brief 由 SYSCLK 和目标波特率算出一组位时序
-   *
-   * @param sysclkHz        芯片 SYSCLK
-   * @param bitrate         目标波特率
-   * @param samplePointPct  采样点百分比
-   * @param out             计算结果，失败时不改写
-   * @param dataPhase       true = 数据段，按 DBTCFG 的 5/4 位宽限幅
-   * @return true = 有解，false = 这个晶振跑不了这个波特率
-   */
+  // 0xFF = 全部成功；1=SPI复位 2=OSCRDY 3=OSC/PLL 4=配置模式 5=CICON
+  // 6=位时序 7=TXQ 8=RX FIFO 9=中断 10=Normal
+  uint8_t initStep() const { return initStep_; }
+
   static bool calcTiming(uint32_t sysclkHz, uint32_t bitrate,
                          uint8_t samplePointPct, BitTiming &out,
                          bool dataPhase = false);
 
 private:
-  // 一次完整 SPI 事务（片选由 SpiPort 的实现管）。失败会计数，不会悄悄失败
   bool xfer(const uint8_t *tx, uint8_t *rx, uint16_t len) const;
-  // 读失败时返回 0 并让 xferFail_ 自增，调用方靠返回值语义兜底
   uint32_t readSfr(uint16_t addr) const;
   void writeSfr(uint16_t addr, uint32_t val) const;
   void readRam(uint16_t addr, uint32_t *words, uint8_t count) const;
   void writeRam(uint16_t addr, const uint32_t *words, uint8_t count) const;
-
-  // 轮询某个寄存器直到 mask 位置起
+  bool ramProbe(uint16_t addr, uint32_t value, uint32_t &readBack);
   bool waitFlag(uint16_t addr, uint32_t mask) const;
 
   bool setMode(uint32_t reqOp);
   bool configTxQueue();
   bool configRxFifo();
-  bool configFilter(uint8_t n, bool ext, uint32_t id, uint32_t mask);
-  // 写完读回 FIFOCON，确认配置真的落进芯片（顺带验证 SPI 双向都通）
   bool verifyFifoConfig(uint16_t addr, uint32_t expect) const;
+  bool configFilter(uint8_t n, bool ext, uint32_t id, uint32_t mask);
 
   SpiPort spi_;
   Config cfg_;
-  // 已使能的中断位，清中断标志时要原样写回 IE 段，否则中断使能会被关掉
-  uint32_t irqEn_ = 0;
-  // SPI 事务累计失败次数。const 成员函数里也要累加，所以是 mutable
+  uint32_t irqEn_ = 0;  // 已使能的中断位，清标志时原样写回
   mutable uint32_t xferFail_ = 0;
+  mutable uint32_t rxOvCount_ = 0;
+  mutable uint8_t initStep_ = 0;
+  mutable uint32_t txqBusyStreak_ = 0;
+
+  static constexpr uint8_t kObjWords = 4;  // 8 头 + 8 数据
+  static constexpr uint16_t kObjBytes = kObjWords * 4;
+  static constexpr uint16_t kTxRamBase = 0x408;
+  static constexpr uint16_t kRxRamBase = 0x418;
+  static constexpr uint32_t kTxqBusyLimit = 60;  // 60 x 5 ms = 300 ms 后强制放行
+
+  mutable uint8_t rxIdx_ = 0;  // UA 回读不合法时的兜底索引
 };
 
 } // namespace BspCan

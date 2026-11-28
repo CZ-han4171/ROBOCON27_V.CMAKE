@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file Mcp2518fd.cpp
  * @brief MCP2518FD 寄存器级驱动实现
  */
@@ -12,24 +12,19 @@ using namespace mcp2518fd;
 
 namespace {
 
-// 一个报文对象：2 个 32 位头 + 16 个 32 位数据（PLSIZE = 64 字节）
-constexpr uint8_t kObjWords = 2 + 16;
-constexpr uint8_t kMaxObjWords = 18;
+constexpr uint8_t kMaxObjWords = 4;  // PLSIZE=8：T0/T1/D0/D1
 constexpr uint8_t kBufBytes = 2 + 4 * kMaxObjWords;
 
 inline uint32_t min32(uint32_t a, uint32_t b) { return a < b ? a : b; }
 
-// 芯片给出的 FIFO 用户地址（CiTXQUA / CiFIFOUAn）是 0x400 基址的绝对地址，
-// 报文 RAM 占 0x400~0xBFF，不是从 0 开始的偏移，所以直接拿它当 SPI 访问地址
-inline bool uaValid(uint16_t ua) {
-  return static_cast<uint32_t>(ua) >= kRamBase &&
-         static_cast<uint32_t>(ua) <= kRamEnd;
-}
+// 自检特征值：SFR 必须写"每字节最高位可写"的值，否则会被字段宽度截断
+constexpr uint32_t kSelfTestSfrPattern = 0x00123456u;
+constexpr uint32_t kSelfTestRamPattern = 0x5AA5C33Cu;
+constexpr uint16_t kSelfTestRamAddr = 0x600;
 
 } // namespace
 
-// ---------------------------------------------------------------- SPI 事务
-// 所有 SPI 都从这里走，失败会计数，上层能查 spiHealthy()，不会"静默失败"
+// ---- SPI 事务 ----
 bool Mcp2518fd::xfer(const uint8_t *tx, uint8_t *rx, uint16_t len) const {
   if (spi_.xfer == nullptr || tx == nullptr || rx == nullptr || len == 0) {
     ++xferFail_;
@@ -42,14 +37,14 @@ bool Mcp2518fd::xfer(const uint8_t *tx, uint8_t *rx, uint16_t len) const {
   return true;
 }
 
-// ---------------------------------------------------------------- SFR 访问
+// ---- SFR / RAM ----
 uint32_t Mcp2518fd::readSfr(uint16_t addr) const {
   uint8_t tx[6] = {0};
   uint8_t rx[6] = {0};
   tx[0] = static_cast<uint8_t>((kSpiCmdRead << 4) | ((addr >> 8) & 0x0F));
   tx[1] = static_cast<uint8_t>(addr & 0xFF);
   if (!xfer(tx, rx, sizeof(tx))) {
-    return 0;  // 读失败返回 0：等标志的循环会因为等不到而超时退出
+    return 0;  // 读失败返回 0：等标志的循环会因此超时退出
   }
   return static_cast<uint32_t>(rx[2]) | (static_cast<uint32_t>(rx[3]) << 8) |
          (static_cast<uint32_t>(rx[4]) << 16) |
@@ -68,7 +63,6 @@ void Mcp2518fd::writeSfr(uint16_t addr, uint32_t val) const {
   (void)xfer(tx, rx, sizeof(tx));
 }
 
-// ---------------------------------------------------------------- RAM 访问
 void Mcp2518fd::readRam(uint16_t addr, uint32_t *words, uint8_t count) const {
   if (count > kMaxObjWords) {
     count = kMaxObjWords;
@@ -84,7 +78,6 @@ void Mcp2518fd::readRam(uint16_t addr, uint32_t *words, uint8_t count) const {
     }
     return;
   }
-
   for (uint8_t i = 0; i < count; ++i) {
     const uint8_t *p = &rx[2 + 4 * i];
     words[i] = static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
@@ -112,16 +105,15 @@ void Mcp2518fd::writeRam(uint16_t addr, const uint32_t *words,
   (void)xfer(tx, rx, total);
 }
 
-// ---------------------------------------------------------------- 模式控制
+// ---- 模式控制 ----
 bool Mcp2518fd::waitFlag(uint16_t addr, uint32_t mask) const {
   const uint32_t fail_before = xferFail_;
   for (uint32_t i = 0; i < cfg_.modeTimeoutLoops; ++i) {
     if ((readSfr(addr) & mask) != 0) {
       return true;
     }
-    // SPI 已经出错就别再空转：每轮都要白等满 kSpiTimeoutMs
     if (xferFail_ != fail_before) {
-      return false;
+      return false;  // SPI 已出错，别再空转等超时
     }
   }
   return false;
@@ -130,7 +122,7 @@ bool Mcp2518fd::waitFlag(uint16_t addr, uint32_t mask) const {
 bool Mcp2518fd::setMode(uint32_t reqOp) {
   const uint32_t fail_before = xferFail_;
   uint32_t con = readSfr(kRegC1Con);
-  // 读失败 con 是 0，写回去会把 TXQEN/ISOCRCEN 等配置位全清掉
+  // 读失败时 con 是 0，写回去会把 TXQEN/ISOCRCEN 全清掉
   if (xferFail_ != fail_before) {
     return false;
   }
@@ -142,7 +134,6 @@ bool Mcp2518fd::setMode(uint32_t reqOp) {
     if (((cur & kConOpModMask) >> 21) == (reqOp & 0x7u)) {
       return true;
     }
-    // 等模式切换期间 SPI 出错：再转满 modeTimeoutLoops 轮就是白等几十秒
     if (xferFail_ != fail_before) {
       return false;
     }
@@ -150,38 +141,76 @@ bool Mcp2518fd::setMode(uint32_t reqOp) {
   return false;
 }
 
-// ------------------------------------------------------------------ 初始化
+// ---- 自检 ----
 bool Mcp2518fd::readDevId(uint8_t &id, uint8_t &rev) {
   const uint32_t v = readSfr(kRegDevId);
   id = static_cast<uint8_t>((v >> 4) & 0xFF);
   rev = static_cast<uint8_t>(v & 0x0F);
-  // 全 0 或全 F 基本都是 SPI 没通：MISO 悬空、片选不对、SCK 没出来
   return (v != 0x00000000u) && (v != 0xFFFFFFFFu);
 }
 
+bool Mcp2518fd::spiReset() const {
+  uint8_t tx[2] = {static_cast<uint8_t>(kSpiCmdReset << 4), 0x00};
+  uint8_t rx[2] = {0};
+  return xfer(tx, rx, sizeof(tx));
+}
+
+bool Mcp2518fd::ramProbe(uint16_t addr, uint32_t value, uint32_t &readBack) {
+  // 报文 RAM 只接受 32 位字访问，地址必须 4 字节对齐且在 0x400~0xBFC
+  if (static_cast<uint32_t>(addr) < kRamBase ||
+      static_cast<uint32_t>(addr) > kRamEnd || (addr & 0x3u) != 0u) {
+    return false;
+  }
+  const uint32_t failBefore = xferFail_;
+  writeRam(addr, &value, 1);
+  uint32_t got = 0;
+  readRam(addr, &got, 1);
+  if (xferFail_ != failBefore) {
+    return false;  // 出错时读回值不可信，不能当成"芯片回了 0"
+  }
+  readBack = got;
+  return got == value;
+}
+
+bool Mcp2518fd::linkSelfTest() {
+  const uint32_t failBefore = xferFail_;
+
+  const uint32_t nbtOld = readSfr(kRegC1NBtCfg);
+  writeSfr(kRegC1NBtCfg, kSelfTestSfrPattern);
+  const bool sfrOk = (readSfr(kRegC1NBtCfg) == kSelfTestSfrPattern);
+  writeSfr(kRegC1NBtCfg, nbtOld);
+
+  uint32_t ramBack = 0;
+  const bool ramOk = ramProbe(kSelfTestRamAddr, kSelfTestRamPattern, ramBack);
+
+  if (xferFail_ != failBefore) {
+    return false;
+  }
+  return sfrOk && ramOk;
+}
+
+// ---- 初始化 ----
 bool Mcp2518fd::init(const Config &cfg) {
   cfg_ = cfg;
   irqEn_ = 0;
-  // 每轮初始化重新计数：上一次的 SPI 故障不该把这次直接判死
   xferFail_ = 0;
+  rxIdx_ = 0;
 
-  // 1) SPI 复位指令：芯片进配置模式，FIFO 指针和报文 RAM 分配一起回到上电值。
-  //    不用 CiTXQCON / CiFIFOCON 的 FRESET 位 —— 官方 Linux 驱动同样只发这条指令，
-  //    免得依赖"FRESET 到底会不会自己清零"这种没把握的行为
-  {
-    uint8_t tx[2] = {static_cast<uint8_t>(kSpiCmdReset << 4), 0x00};
-    uint8_t rx[2] = {0};
-    if (!xfer(tx, rx, sizeof(tx))) {
-      return false;
-    }
+  // 1) 复位指令只在配置模式生效，先请求 Config
+  initStep_ = 1;
+  (void)setMode(kModeConfig);
+  if (!spiReset()) {
+    return false;
   }
 
-  // 等晶振起振，OSCRDY 起来才说明 20MHz 那个晶振真在振
+  // 2) 等晶振起振，只认 OSCRDY
+  initStep_ = 2;
   if (!waitFlag(kRegOsc, kOscOscReady)) {
     return false;
   }
 
-  // 时钟源：20MHz / 40MHz 直供都关 PLL，4MHz 晶振才开 x10
+  // 3) 时钟源：20/40 MHz 直供都关 PLL，4 MHz 晶振才开 x10
+  initStep_ = 3;
   {
     uint32_t osc = readSfr(kRegOsc);
     osc &= ~(kOscPllEn | kOscOscDis | kOscSclkDiv | kOscLpmEn);
@@ -189,18 +218,19 @@ bool Mcp2518fd::init(const Config &cfg) {
       osc |= kOscPllEn;
     }
     writeSfr(kRegOsc, osc);
-    // PLLEN 写进去之后才等 PLLREADY，顺序反了会白等一轮超时
     if (cfg_.usePll && !waitFlag(kRegOsc, kOscPllReady)) {
       return false;
     }
   }
 
-  // FIFO 和过滤器只有配置模式下才能改
+  // 4) FIFO / 滤波器 / 位时序都只有配置模式下能改
+  initStep_ = 4;
   if (!setMode(kModeConfig)) {
     return false;
   }
 
-  // ISO 与非 ISO 的 CRC 算法不同，配错百分之百通信不上
+  // 5) C1CON：ISO CRC、TXQEN、RTXAT（让 TXQCON.TXAT 生效）
+  initStep_ = 5;
   {
     uint32_t con = readSfr(kRegC1Con);
     if (cfg_.isoCanFd) {
@@ -208,10 +238,10 @@ bool Mcp2518fd::init(const Config &cfg) {
     } else {
       con &= ~kConIsoCrcEn;
     }
-    con |= kConTxQEn;  // 打开发送队列
+    con |= kConTxQEn | kConRtxAt;
     writeSfr(kRegC1Con, con);
 
-    // 读回校验：配置位写不进去，说明没停在配置模式或者 SPI 只有写方向通
+    // 只校验 TXQEN/ISOCRCEN，RTXAT 在克隆片上可能写不进去
     const uint32_t back = readSfr(kRegC1Con);
     constexpr uint32_t kCheck = kConTxQEn | kConIsoCrcEn;
     if ((back & kCheck) != (con & kCheck)) {
@@ -219,7 +249,8 @@ bool Mcp2518fd::init(const Config &cfg) {
     }
   }
 
-  // 位时序：NBTCFG / DBTCFG 低 24 位都是 BRP | TSEG1 | TSEG2 | SJW
+  // 6) 位时序；TDC 关闭（只对 BRS=1 生效，本片上曾导致 bus-off）
+  initStep_ = 6;
   {
     const BitTiming &n = cfg_.timing.nominal;
     writeSfr(kRegC1NBtCfg, (static_cast<uint32_t>(n.brp) << 24) |
@@ -231,65 +262,58 @@ bool Mcp2518fd::init(const Config &cfg) {
                                (static_cast<uint32_t>(d.tseg1 & 0x1F) << 16) |
                                (static_cast<uint32_t>(d.tseg2 & 0x0F) << 8) |
                                static_cast<uint32_t>(d.sjw & 0x0F));
+    writeSfr(kRegC1Tdc, 0u);
   }
-  // TDC：Auto 模式让芯片自己测量收发器环路延迟。TDCO 填手册上限 63 作补偿
-  // 上限、TDCV 留 0 作最小值，这是 Linux mcp251xfd 驱动的推荐配置——手册给的
-  // [-64,63] 是相对值语义，实测填相对值反而会导致 bus-off。经典帧不走数据段，
-  // TDC 对它无影响，只有 BRS=1 的帧才生效。
-  writeSfr(kRegC1Tdc, (kTdcModAuto << kTdcModShift) | (kTdcCoMax << kTdcCoShift));
 
-  if (!configTxQueue() || !configRxFifo()) {
+  initStep_ = 7;
+  if (!configTxQueue()) {
+    return false;
+  }
+  initStep_ = 8;
+  if (!configRxFifo()) {
     return false;
   }
 
-  // C1INT 是"写 0 清零"：IF 段写 0 把挂起的可清标志清掉，
-  // IE 段写 irqEn_ 打开需要的中断。RXIF/TXIF/RXOVIF 是只读汇总位，写不写都没用。
+  // 9) C1INT 写 0 清可清标志 + IE 段开中断
+  initStep_ = 9;
   irqEn_ = kIntRxIe | kIntRxOvIe | kIntCerIe | kIntSerIe;
   writeSfr(kRegC1Int, irqEn_);
 
+  initStep_ = 10;
   if (!setMode(kModeNormalFd)) {
     return false;
   }
+  initStep_ = 0xFF;
   return true;
 }
 
 bool Mcp2518fd::configTxQueue() {
-  // PLSIZE=64B，FSIZE=深度-1，TXAT=3（不限重发次数），优先级取中间值
+  // 1 槽 8 字节 + TXAT=0：没人 ACK 时一帧立刻结束，不会把槽位占死
   const uint32_t con =
-      (static_cast<uint32_t>(kPlSize64) << kFifoConPldSizeShift) |
+      (static_cast<uint32_t>(kPlSize8) << kFifoConPldSizeShift) |
       (static_cast<uint32_t>(kTxDepth - 1) << kFifoConFSizeShift) |
-      (static_cast<uint32_t>(kFifoConTxAtUnlimited) << kFifoConTxAtShift) |
-      (0x10u << kFifoConTxPriShift) | kFifoConTxEn;
+      kFifoConTxEn;
   writeSfr(kRegC1TxQCon, con);
-  if (!verifyFifoConfig(kRegC1TxQCon, con)) {
-    return false;
-  }
-
-  // 芯片按 FSIZE 重新分配报文 RAM 后会把地址写进 CiTXQUA，
-  // 读回来必须落在 0x400~0xBFF，否则后面按 UA 写 RAM 全写到别处去了
-  return uaValid(static_cast<uint16_t>(readSfr(kRegC1TxQUa) & 0xFFFFu));
+  // 不写 CiTXQUA（只读）：TXQ 对象固定在 0x408 = 0x400 + 回读偏移
+  return verifyFifoConfig(kRegC1TxQCon, con);
 }
 
 bool Mcp2518fd::configRxFifo() {
-  const uint32_t con = (static_cast<uint32_t>(kPlSize64) << kFifoConPldSizeShift) |
-                       (static_cast<uint32_t>(kRxDepth - 1) << kFifoConFSizeShift) |
-                       kFifoConNotEmptyIe | kFifoConRxOvIe;
+  const uint32_t con =
+      (static_cast<uint32_t>(kPlSize8) << kFifoConPldSizeShift) |
+      (static_cast<uint32_t>(kRxDepth - 1) << kFifoConFSizeShift) |
+      kFifoConNotEmptyIe | kFifoConRxOvIe;
   const uint16_t addr = regFifoCon(kRxFifoIndex);
-  // TXEN = 0 就是接收 FIFO
-  writeSfr(addr, con);
+  writeSfr(addr, con);  // TXEN=0 就是接收 FIFO
   if (!verifyFifoConfig(addr, con)) {
     return false;
   }
-  if (!uaValid(static_cast<uint16_t>(readSfr(regFifoUa(kRxFifoIndex)) & 0xFFFFu))) {
-    return false;
-  }
-
-  // 过滤器 0 掩码全 0 = 全部接收，具体 ID 分发留到 com_config 层做
+  // 不写 CiFIFOUA1（只读）：对象 0 在 0x418，popRx 按 0x400 + 回读值定位
+  rxIdx_ = 0;
+  // 滤波器 0：对象/掩码全 0 = 全部接收，ID 分发留到应用层
   return configFilter(0, false, 0, 0);
 }
 
-// 配置完读回 FIFOCON。PLSIZE/FSIZE/TXEN 只在配置模式下可改，
-// 读回来和写下去不一致，就说明芯片没停在配置模式或者 SPI 有问题
 bool Mcp2518fd::verifyFifoConfig(uint16_t addr, uint32_t expect) const {
   constexpr uint32_t kMask = (0x7u << kFifoConPldSizeShift) |
                              (0x1Fu << kFifoConFSizeShift) | kFifoConTxEn;
@@ -297,88 +321,111 @@ bool Mcp2518fd::verifyFifoConfig(uint16_t addr, uint32_t expect) const {
 }
 
 bool Mcp2518fd::configFilter(uint8_t n, bool ext, uint32_t id, uint32_t mask) {
-  uint32_t obj = id & (0x7FFu | (0x3FFFFu << 11));
-  uint32_t msk = mask & (0x7FFu | (0x3FFFFu << 11));
+  // 标准帧不能置 SID11/EXIDE：掩码位=1 表示必须匹配，置错会挡掉所有帧
+  constexpr uint32_t eidMask = 0x3FFFFu;
+  uint32_t obj = 0;
+  uint32_t msk = 0;
   if (ext) {
-    obj |= kFltExIde;
-    msk |= kFltExIde;
+    obj = ((id >> 18) & 0x7FFu) | ((id & eidMask) << 11) | kFltExIde;
+    msk = (((mask >> 18) & 0x7FFu) | ((mask & eidMask) << 11)) | kFltExIde;
   } else {
-    obj |= kFltSid11;
+    obj = id & 0x7FFu;
+    msk = mask & 0x7FFu;
   }
   writeSfr(regFltObj(n), obj);
   writeSfr(regFltMask(n), msk);
-  // FLTCONn：每 4 个过滤器共用一个 32 位寄存器，每个过滤器占 1 个字节
-  // （FLT0 在 [7:0]、FLT1 在 [15:8]……），所以按 n%4 左移，不能都写低字节
-  // bit7 = FLTENn，bit4:0 = 目标 FIFO 编号
+  // FLTCON 每 4 个过滤器共用一个字：每字节 bit7=FLTENn、bit4:0=FIFO 号
   writeSfr(regFltCon(n),
            ((0x1u << 7) | (kRxFifoIndex & 0x1F)) << ((n % 4u) * 8u));
   return true;
 }
 
-
-// ---------------------------------------------------------------- 发送 / 接收
+// ---- 发送 ----
 bool Mcp2518fd::txQueueFull() const {
-  return (readSfr(kRegC1TxQSta) & kTxqStaNotFull) == 0;
+  // 只看 TXREQ；别加 TXQSTA 的位（本片不可靠，会长期判忙把帧堵在队列里）
+  const uint32_t con = readSfr(kRegC1TxQCon);
+  if ((con & kFifoConTxReq) == 0u) {
+    txqBusyStreak_ = 0;
+    return false;
+  }
+  // 连续判忙 300 ms 强制放行一次，最多丢 1 帧
+  if (++txqBusyStreak_ >= kTxqBusyLimit) {
+    txqBusyStreak_ = 0;
+    return false;
+  }
+  return true;
 }
 
 bool Mcp2518fd::pushTx(const FdFrame &frame) {
-  if (frame.len > kFdMaxPayload) {
+  if (frame.len > kMaxPayload) {
     return false;
   }
   const uint32_t fail_before = xferFail_;
-  // 队列满就直接放弃，交给上层下一轮重发，不要在这里死等
   if (txQueueFull()) {
-    return false;
-  }
-
-  const uint16_t ua =
-      static_cast<uint16_t>(readSfr(kRegC1TxQUa) & 0xFFFFu);
-  if (!uaValid(ua)) {
-    return false;
+    return false;  // 交给上层下一轮重发，不在这里死等
   }
 
   uint32_t words[kObjWords] = {0};
-  const uint32_t sid = frame.ext ? ((frame.id >> 18) & 0x7FF) : (frame.id & 0x7FF);
+  const uint32_t sid =
+      frame.ext ? ((frame.id >> 18) & 0x7FF) : (frame.id & 0x7FF);
   const uint32_t eid = frame.ext ? (frame.id & 0x3FFFF) : 0;
   words[0] = sid | (eid << 11);
   words[1] = (static_cast<uint32_t>(lenToDlc(frame.len)) & kObjDlcMask) |
              (frame.ext ? kObjIde : 0) | (frame.rtr ? kObjRtr : 0) |
              (frame.brs ? kObjBrs : 0) | (frame.fdf ? kObjFdf : 0);
+  std::memcpy(&words[2], frame.data, kMaxPayload);
 
-  // 数据区固定 64 字节，未用到的补 0
-  std::memcpy(&words[2], frame.data, kFdMaxPayload);
+  // ⚠️ 对象写在 0x408，不是 0x400（差 8 字节会让芯片把 D0/D1 当成 ID/DLC）
+  writeRam(kTxRamBase, words, kObjWords);
 
-  writeRam(ua, words, kObjWords);
-
-  // UINC 推进 head、TXREQ 交给芯片自己发。两个都是自清零的控制位，
-  // 带上读回来的配置位一起写，省一次 SPI 事务也不会破坏 FIFO 配置
   const uint32_t con = readSfr(kRegC1TxQCon);
-  // 读失败时 readSfr 返回 0，写回 0|UINC|TXREQ 会把 TXEN/PLSIZE/FSIZE 全清掉，
-  // TXQ 直接被禁用。宁可这一帧不发，也不能写坏 FIFO 配置
+  // 读失败写回 0 会把 TXEN/PLSIZE/FSIZE 清掉，宁可这帧不发
   if (xferFail_ != fail_before) {
     return false;
   }
   writeSfr(kRegC1TxQCon, con | kFifoConUInc | kFifoConTxReq);
 
-  // 中途只要有一次 SPI 失败，这帧可能根本没进芯片，必须让上层知道（计入 txFail）
   return xferFail_ == fail_before;
 }
 
+// ---- 接收 ----
 bool Mcp2518fd::popRx(FdFrame &frame) {
   const uint32_t fail_before = xferFail_;
-  const uint32_t sta = readSfr(regFifoSta(kRxFifoIndex));
-  if ((sta & kFifoStaNotEmptyIf) == 0) {
+  uint32_t sta = readSfr(regFifoSta(kRxFifoIndex));
+
+  // 溢出标志必须写 1 清，不清则该 FIFO 永远拒收
+  if ((sta & kFifoStaRxOvIf) != 0u) {
+    ++rxOvCount_;
+    writeSfr(kRegC1RxOvIf, rxOvIfBit(kRxFifoIndex));
+    sta = readSfr(regFifoSta(kRxFifoIndex));
+  }
+
+  // 唯一可靠的"有帧"判据是 bit0（FIFOCI 是消息索引，不是帧数）
+  if ((sta & kFifoStaNotEmptyOrNotFull) == 0u) {
     return false;
   }
 
-  const uint16_t ua =
-      static_cast<uint16_t>(readSfr(regFifoUa(kRxFifoIndex)) & 0xFFFFu);
-  if (!uaValid(ua)) {
-    return false;
+  // 槽位按 CiFIFOUA1 回读偏移定位（对象 0 -> 0x018），不合法才退回软件索引
+  uint16_t ua;
+  {
+    const uint32_t uaRaw = readSfr(regFifoUa(kRxFifoIndex)) & 0x7FFu;
+    const uint16_t cand = static_cast<uint16_t>(kRamBase + uaRaw);
+    const uint16_t lastSlot =
+        static_cast<uint16_t>(kRxRamBase + (kRxDepth - 1u) * kObjBytes);
+    if ((cand >= kRxRamBase) && (cand <= lastSlot) && ((cand & 0x3u) == 0u)) {
+      ua = cand;
+      rxIdx_ = static_cast<uint8_t>((cand - kRxRamBase) / kObjBytes);
+    } else {
+      ua = static_cast<uint16_t>(kRxRamBase + rxIdx_ * kObjBytes);
+    }
   }
 
   uint32_t words[kObjWords] = {0};
   readRam(ua, words, kObjWords);
+  if (xferFail_ != fail_before) {
+    return false;
+  }
+  rxIdx_ = static_cast<uint8_t>((rxIdx_ + 1u) % kRxDepth);
 
   const uint32_t r0 = words[0];
   const uint32_t r1 = words[1];
@@ -387,63 +434,43 @@ bool Mcp2518fd::popRx(FdFrame &frame) {
   frame.brs = (r1 & kObjBrs) != 0;
   frame.fdf = (r1 & kObjFdf) != 0;
   frame.len = dlcToLen(static_cast<uint8_t>(r1 & kObjDlcMask));
-  if (frame.len > kFdMaxPayload) {
-    frame.len = kFdMaxPayload;
+  if (frame.len > kMaxPayload) {
+    frame.len = kMaxPayload;
   }
 
   const uint32_t sid = r0 & 0x7FF;
   const uint32_t eid = (r0 >> 11) & 0x3FFFF;
   frame.id = frame.ext ? ((sid << 18) | eid) : sid;
 
-  std::memcpy(frame.data, &words[2], kFdMaxPayload);
+  std::memset(frame.data, 0, kFdMaxPayload);
+  std::memcpy(frame.data, &words[2], kMaxPayload);
 
-  // 读完再 UINC，把这个槽位还给 FIFO
   const uint32_t con = readSfr(regFifoCon(kRxFifoIndex));
-  // 同上：读失败写回 0 会把 RX FIFO 的配置清掉。不 UINC 只是下一轮重读同一帧，
-  // 不会丢数据，比清掉配置安全
   if (xferFail_ != fail_before) {
-    return false;
+    return false;  // 不 UINC 只是下轮重读同一帧，不会丢数据
   }
   writeSfr(regFifoCon(kRxFifoIndex), con | kFifoConUInc);
 
-  // 读 RAM 时就失败了，帧内容不可信，返回 false 让上层丢掉
   return xferFail_ == fail_before;
 }
 
-// ---------------------------------------------------------------- 中断与状态
+// ---- 中断 / 状态 ----
 uint32_t Mcp2518fd::readInterrupt() { return readSfr(kRegC1Int); }
 
-// C1INT 的标志位是"写 0 清零"，而且只有 kIntIfClearable 里那 5 个能软件清。
-// IF 段全写 0 就是把所有可清标志清掉，IE 段写回 irqEn_ 保住中断使能。
 void Mcp2518fd::clearInterrupt() { writeSfr(kRegC1Int, irqEn_); }
-
-uint32_t Mcp2518fd::readFifoStatus(uint8_t fifo) const {
-  return readSfr(regFifoSta(fifo));
-}
 
 Mcp2518fd::Status Mcp2518fd::status() const {
   const uint32_t trec = readSfr(kRegC1Trec);
   Status s;
-  // C1TREC: TEC 在高字节 [15:8]，REC 在低字节 [7:0]
   s.tec = static_cast<uint8_t>((trec >> kTrecTecShift) & 0xFF);
   s.rec = static_cast<uint8_t>((trec >> kTrecRecShift) & 0xFF);
   s.busOff = (trec & kTrecTxBo) != 0;
   return s;
 }
 
-// 只有 bus-off 才算总线不可用；错误警告阶段继续跑，计数在 status() 里看
 bool Mcp2518fd::busHealthy() const { return !status().busOff; }
 
-void Mcp2518fd::errorCounters(uint8_t &tec, uint8_t &rec) const {
-  const Status s = status();
-  tec = s.tec;
-  rec = s.rec;
-}
-
-// ------------------------------------------------------------------ 位时序
-// 仲裁段 TSEG1 是 8 位、TSEG2 是 7 位，数据段分别只有 5 位和 4 位。
-// 数据段 tq 总数一大（低波特率）就会超出字段宽度，写进芯片被静默截断，
-// 实际波特率和采样点全变，比配置失败更难查，所以这里按段判上限。
+// ---- 位时序 ----
 bool Mcp2518fd::calcTiming(uint32_t sysclkHz, uint32_t bitrate,
                            uint8_t samplePointPct, BitTiming &out,
                            bool dataPhase) {
@@ -452,25 +479,19 @@ bool Mcp2518fd::calcTiming(uint32_t sysclkHz, uint32_t bitrate,
     return false;
   }
 
-  // 字段存的是"长度-1"，所以字段宽度 +1 就是长度上限
-  // DBTCFG[20:16] = 5 位 -> 32；NBTCFG[23:16] = 8 位 -> 256
   const uint32_t maxTseg1Len = dataPhase ? 32u : 256u;
-  // DBTCFG[11:8] = 4 位 -> 16；NBTCFG[14:8] = 7 位 -> 128
   const uint32_t maxTseg2Len = dataPhase ? 16u : 128u;
 
-  // 从小往大找分频，tq 数越多采样点越细
   for (uint32_t brp = 1; brp <= 256; ++brp) {
     const uint32_t div = brp * bitrate;
-    // 除不尽就换下一个，否则实际波特率和设定值对不上
     if ((sysclkHz % div) != 0) {
-      continue;
+      continue;  // 除不尽就换下一个，否则实际波特率和设定值对不上
     }
     const uint32_t tqTotal = sysclkHz / div;
     if (tqTotal < 8 || tqTotal > 256) {
       continue;
     }
 
-    // 采样点位置 = 1(同步段) + TSEG1，所以 TSEG1 长度要减 1
     const uint32_t want = (tqTotal * samplePointPct + 50) / 100;
     uint32_t tseg1Len = (want <= 1) ? 1 : (want - 1);
     if (tseg1Len > tqTotal - 2) {
@@ -480,15 +501,13 @@ bool Mcp2518fd::calcTiming(uint32_t sysclkHz, uint32_t bitrate,
     if (tseg2Len < 1) {
       continue;
     }
-    // 这个分频下装不进寄存器字段，换更大的 brp（tq 总数变小）再试
     if (tseg1Len > maxTseg1Len || tseg2Len > maxTseg2Len) {
-      continue;
+      continue;  // 装不进字段，换更大的 brp 再试
     }
 
     out.brp = static_cast<uint8_t>(brp - 1);
     out.tseg1 = static_cast<uint8_t>(tseg1Len - 1);
     out.tseg2 = static_cast<uint8_t>(tseg2Len - 1);
-    // SJW 最多取 4 个 tq，天然装得下两段的 4 位下限字段，不用另判
     out.sjw = static_cast<uint8_t>(min32(tseg2Len, 4) - 1);
     return true;
   }
@@ -496,4 +515,3 @@ bool Mcp2518fd::calcTiming(uint32_t sysclkHz, uint32_t bitrate,
 }
 
 } // namespace BspCan
-

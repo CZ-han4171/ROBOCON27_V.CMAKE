@@ -86,8 +86,4 @@ void SpiCanTransport::onInterrupt() {
 
 bool SpiCanTransport::busHealthy() const { return chip_.busHealthy(); }
 
-void SpiCanTransport::errorCounters(uint8_t &tec, uint8_t &rec) const {
-  chip_.errorCounters(tec, rec);
-}
-
 } // namespace BspCan
