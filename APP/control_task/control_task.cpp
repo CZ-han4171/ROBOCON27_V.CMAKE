@@ -78,7 +78,7 @@ void controlTask(void *argument) {
         }
         control_rm_cmd_last = control_rm_cmd;
 
-        {   
+        {  
             /////////////////debug begin///////////////////////
             
             /////////////////debug end///////////////////////
